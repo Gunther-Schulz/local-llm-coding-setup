@@ -7,7 +7,9 @@ set -e
 # You can override via:
 #   export VLLM_GGUF_MODEL="/path/to/model.gguf"
 #   export VLLM_TOKENIZER_ID="Qwen/Qwen2.5-Coder-14B-Instruct"
-#   export VLLM_MAX_LEN=81920
+#   # NOTE: With GGUF, vLLM enforces the model's native training context (32K for Qwen2.5-Coder-14B).
+#   # Setting VLLM_MAX_LEN above 32768 will cause a ValidationError.
+#   export VLLM_MAX_LEN=32768
 
 GGUF_MODEL="${VLLM_GGUF_MODEL:-/workspace/models/qwen2.5-coder-14b-q4_k_m/qwen2.5-coder-14b-instruct-q4_k_m.gguf}"
 TOKENIZER_ID="${VLLM_TOKENIZER_ID:-Qwen/Qwen2.5-Coder-14B-Instruct}"

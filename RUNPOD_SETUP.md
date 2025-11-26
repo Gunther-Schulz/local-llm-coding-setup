@@ -1,9 +1,9 @@
 # NOTES
 watch -n 1 nvidia-smi --query-gpu=memory.used,memory.total --format=csv
 
-# RunPod Setup: Qwen2.5-Coder-14B-Instruct + Native llama.cpp + Compression Proxy
+# RunPod Setup: Qwen2.5-Coder-14B-Instruct + Native llama.cpp (32K) + Compression Proxy
 
-**Current Setup:** Native llama.cpp server (not llama-cpp-python)
+**Current Setup:** Native llama.cpp server (not llama-cpp-python), configured for **32K context**
 
 **Future Plans:** Test GLM-4-9B-Chat for Chinese support and alternative tool calling
 
@@ -60,8 +60,8 @@ hf download yemiao2745/Qwen2.5-Coder-14B-Instruct-Q4_K_M-GGUF --include "qwen2.5
 
 1. **Native llama-server** (port 8000)
    - Model: Qwen2.5-Coder-14B-Instruct Q4_K_M
-   - Context: 81920 tokens (80K) with `--ctx-size 81920`
-   - **Actual usable context: 32768 tokens** (slots are auto-capped to model's training context)
+   - Context: **32768 tokens (32K)** with `--ctx-size 32768`
+   - Matches the model's native training context (no RoPE scaling)
    - GPU layers: All layers on GPU (`--n-gpu-layers -1`)
    - Batch sizes: `--batch-size 128 --ubatch-size 128`
    - Flash attention: Enabled (`--flash-attn on`)
@@ -71,9 +71,9 @@ hf download yemiao2745/Qwen2.5-Coder-14B-Instruct-Q4_K_M-GGUF --include "qwen2.5
 
 2. **Compression proxy** (port 8002)
    - FastAPI server
-   - Compresses old messages when context > 100K
+   - Compresses old messages once total prompt tokens exceed ~24K
    - Caches compressed messages
-   - Keeps last 3 messages uncompressed
+   - Keeps last 4 messages uncompressed
    - Uses smaller compression model: `microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank`
    - **Tool calling support:**
      - Explicitly handles `tools` and `tool_choice` parameters
@@ -123,12 +123,12 @@ hf download yemiao2745/Qwen2.5-Coder-14B-Instruct-Q4_K_M-GGUF --include "qwen2.5
 ./stop-all.sh
 ```
 
-## VRAM Usage (80K context allocation, 32K actual slots)
+## VRAM Usage (32K context)
 
 - Model: ~8.5 GB
-- KV Cache (80K allocation): ~15.4 GB (but slots capped at 32K)
+- KV Cache (32K allocation): fits comfortably within 32GB VRAM
 - Compute buffer & overhead: ~0.5 GB
-- Total: ~24 GB (fits in 32GB VRAM with headroom)
+- Total: well within 32GB VRAM with headroom
 
 ## Qwen2.5-Coder Performance
 
@@ -161,7 +161,7 @@ When using native `llama-server` with `--jinja` flag for tool calling, there's a
 
 ### Context Window
 
-- **Configured:** 81920 tokens (`--ctx-size 81920`)
-- **Actual:** Server auto-caps slots to 32768 (model's training context)
+- **Configured:** 32768 tokens (`--ctx-size 32768`)
+- **Actual:** 32768 tokens (matches model's training context)
 - **Reason:** Qwen2.5-Coder-14B is trained on 32K context
-- **Solution:** Compression proxy manages conversation history to fit within 32K
+- **Solution:** Compression proxy manages conversation history so prompts stay safely within 32K

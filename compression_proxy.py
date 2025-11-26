@@ -12,16 +12,16 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 BACKEND_SERVER_URL = "http://localhost:8000"  # vLLM or llama.cpp OpenAI-compatible server
-# Start compressing well before the model's 80K context limit so we never
-# send more than ~n_ctx tokens to the backend model server.
-COMPRESSION_THRESHOLD = 40000
+# For a 32K-context backend (llama.cpp with --ctx-size 32768), start compressing
+# well before the hard limit so we never send more than ~n_ctx tokens.
+COMPRESSION_THRESHOLD = 24000
 # Keep the last few real turns uncompressed; everything older is eligible
 # for summarization when we cross the threshold.
 KEEP_RECENT_MESSAGES = 4
-# Hard safety cap on prompt tokens we send to llama.cpp (n_ctx is 81920)
-# Leave some headroom for generated tokens; with 70K prompt tokens we still have
-# ~10K tokens available for completion before hitting the 81K context limit.
-MAX_PROMPT_TOKENS = 70000
+# Hard safety cap on prompt tokens we send to the backend model server.
+# With ~30K prompt tokens we still leave room for completions before hitting
+# the 32K context limit; any excess history will be summarized or dropped.
+MAX_PROMPT_TOKENS = 30000
 
 conversation_cache: Dict[str, List[Dict]] = {}
 # Rolling summary per conversation (single synthetic message)
@@ -149,7 +149,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             )
         optimized_messages.extend(recent)
 
-        # Enforce a hard cap on total prompt tokens before calling llama.cpp
+        # Enforce a hard cap on total prompt tokens before calling the backend
         def total_tokens(msgs: List[Dict]) -> int:
             text = " ".join(m.get("content", "") for m in msgs)
             return estimate_tokens(text)
@@ -214,16 +214,26 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             
             final_messages.append(final_msg)
         
-        # Build request with all parameters, explicitly including tool calling
-        # Preserve the client's stream preference
+        # Build request with all parameters, explicitly including tool calling.
+        # Preserve the client's stream preference, but clamp max_tokens so that
+        # prompt_tokens + max_tokens never exceeds the backend context window.
         stream = bool(request.stream)
+
+        # Approximate backend context limit (must match --ctx-size on the server)
+        BACKEND_CTX_LIMIT = 32768
+        SAFETY_MARGIN = 1024
+        prompt_tokens = total_tokens(final_messages)
+        max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
+
+        requested_max = request.max_tokens if request.max_tokens is not None else max_completion_allowed
+        effective_max_tokens = max(1, min(requested_max, max_completion_allowed))
 
         llama_request = {
             "model": request.model,
             "messages": final_messages,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
-            "stream": stream
+            "max_tokens": effective_max_tokens,
+            "stream": stream,
         }
         
         # Explicitly pass through tool calling parameters
