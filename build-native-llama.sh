@@ -5,10 +5,10 @@ echo "Building native llama.cpp with CUDA support..."
 
 cd /workspace
 
-# Clone llama.cpp if not exists
+# Clone llama.cpp if not exists (official upstream)
 if [ ! -d "llama.cpp-native" ]; then
-    echo "Cloning llama.cpp (patched fork)..."
-    git clone --depth 1 https://github.com/Gunther-Schulz/llama.cpp.git llama.cpp-native
+    echo "Cloning official llama.cpp (ggerganov/llama.cpp)..."
+    git clone --depth 1 https://github.com/ggerganov/llama.cpp.git llama.cpp-native
 fi
 
 cd llama.cpp-native

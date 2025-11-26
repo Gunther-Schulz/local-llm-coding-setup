@@ -12,8 +12,10 @@ requests>=2.31.0
 # LLM and compression
 llmlingua>=0.2.1
 sentence-transformers>=2.3.0
+vllm
 
-# Hugging Face
+# Hugging Face / transfer
+huggingface_hub[hf_transfer,cli]>=0.26.0
 hf_transfer>=0.1.5
 
 # Additional server dependencies

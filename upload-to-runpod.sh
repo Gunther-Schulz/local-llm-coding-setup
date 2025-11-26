@@ -5,7 +5,7 @@
 set -e
 
 RUNPOD_HOST="149.36.1.181"
-RUNPOD_PORT="44801"
+RUNPOD_PORT="42717"
 RUNPOD_USER="root"
 SSH_KEY="$HOME/.ssh/id_ed25519"
 
@@ -17,6 +17,8 @@ echo ""
 echo "Uploading scripts..."
 scp -i $SSH_KEY -P $RUNPOD_PORT \
     build-native-llama.sh \
+    install-deps.sh \
+    download-qwen2.5-coder-14b.sh \
     start-llama-server-native.sh \
     start-compression-proxy.sh \
     start-all-native.sh \
@@ -25,6 +27,7 @@ scp -i $SSH_KEY -P $RUNPOD_PORT \
     start-vllm-server.sh \
     stop-all.sh \
     compression_proxy.py \
+    requirements.txt \
     $RUNPOD_USER@$RUNPOD_HOST:/workspace/
 
 # Make scripts executable
@@ -42,9 +45,11 @@ echo ""
 echo "Then run:"
 echo "  cd /workspace"
 echo "  ./stop-all.sh                    # Stop any running servers"
+echo "  ./install-deps.sh                # Install Python dependencies (first time only)"
 echo "  ./build-native-llama.sh          # Build native llama.cpp (first time only)"
 echo "  ./start-all-native.sh            # Start native llama-server + proxy"
 echo ""
-echo "Or use llama-cpp-python instead:"
-echo "  ./start-all.sh                   # Start llama-cpp-python + proxy"
+echo "Or use vLLM instead:"
+echo "  ./download-qwen2.5-coder-14b.sh  # (Re)download Qwen2.5-Coder-14B GGUF if needed"
+echo "  ./start-all-vllm.sh              # Start vLLM OpenAI server + proxy"
 
