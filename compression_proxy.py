@@ -107,30 +107,14 @@ def optimize_context(messages: List[Dict], conversation_id: str) -> List[Dict]:
 
 async def handle_chat_completions(request: ChatCompletionRequest):
     try:
-        # Normalize messages into a schema that llama-cpp-python's OpenAI adapter accepts.
-        # Some clients (like Cursor) may send richer OpenAI-style messages (tool calls, etc.)
-        # that llama-cpp's Pydantic models currently reject. We keep the textual content and
-        # roles, but strip problematic fields so the backend always gets valid input.
-        raw_messages = []
-        for msg in request.messages:
-            d = msg.model_dump()
-            role = d.get("role")
-            content = d.get("content", "")
-
-            # Keep only simple system/user/assistant messages with string content.
-            if role in ("system", "user", "assistant"):
-                if isinstance(content, str):
-                    raw_messages.append({"role": role, "content": content})
-                else:
-                    # If content is structured (e.g. list segments), fall back to JSON string
-                    raw_messages.append({"role": role, "content": json.dumps(content)})
-            # Skip tool/function messages entirely to avoid schema conflicts in llama-cpp.
-
-        conversation_id = get_conversation_id(raw_messages)
+        # Convert Pydantic messages to dicts for processing
+        incoming_messages = [msg.model_dump() for msg in request.messages]
+        
+        conversation_id = get_conversation_id(incoming_messages)
 
         # Split into dev prompt (first), middle history, and recent real turns
-        dev_prompt = raw_messages[0] if raw_messages else None
-        rest = raw_messages[1:] if len(raw_messages) > 1 else []
+        dev_prompt = incoming_messages[0] if incoming_messages else None
+        rest = incoming_messages[1:] if len(incoming_messages) > 1 else []
 
         recent = rest[-KEEP_RECENT_MESSAGES:] if KEEP_RECENT_MESSAGES > 0 else rest
         middle = rest[:-KEEP_RECENT_MESSAGES] if KEEP_RECENT_MESSAGES > 0 else []
@@ -204,13 +188,37 @@ async def handle_chat_completions(request: ChatCompletionRequest):
         if final_tokens != current_tokens or final_tokens > MAX_PROMPT_TOKENS:
             print(f"[compression] hard-cap: final_tokens={final_tokens}, messages={len(optimized_messages)}")
         
+        # NOW prepare messages for llama-cpp-python
+        # Keep tool-related fields (tool_calls, tool_call_id) intact for native tool calling
+        final_messages = []
+        for msg in optimized_messages:
+            role = msg.get("role")
+            content = msg.get("content", "")
+            
+            # Build the message with role and content
+            final_msg = {"role": role}
+            if isinstance(content, str):
+                final_msg["content"] = content
+            else:
+                final_msg["content"] = json.dumps(content)
+            
+            # Preserve tool_calls for assistant messages
+            if role == "assistant" and "tool_calls" in msg:
+                final_msg["tool_calls"] = msg["tool_calls"]
+            
+            # Preserve tool_call_id for tool response messages
+            if role == "tool" and "tool_call_id" in msg:
+                final_msg["tool_call_id"] = msg["tool_call_id"]
+            
+            final_messages.append(final_msg)
+        
         # Build request with all parameters, explicitly including tool calling
         # Preserve the client's stream preference
         stream = bool(request.stream)
 
         llama_request = {
             "model": request.model,
-            "messages": optimized_messages,
+            "messages": final_messages,
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
             "stream": stream

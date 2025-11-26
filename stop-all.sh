@@ -4,6 +4,9 @@ echo 'Stopping all servers...'
 # Kill llama-cpp-python server (port 8000)
 pkill -9 -f 'llama_cpp.server' && echo 'Stopped llama-cpp-python server' || echo 'No llama-cpp-python server running'
 
+# Kill native llama-server (port 8000)
+pkill -9 -f 'llama-server' && echo 'Stopped native llama-server' || echo 'No native llama-server running'
+
 # Kill compression proxy (port 8002)
 pkill -9 -f 'compression_proxy.py' && echo 'Stopped compression proxy' || echo 'No compression proxy running'
 

@@ -5,7 +5,7 @@
 set -e
 
 RUNPOD_HOST="149.36.0.117"
-RUNPOD_PORT="11724"
+RUNPOD_PORT="12844"
 RUNPOD_USER="root"
 SSH_KEY="$HOME/.ssh/id_ed25519"
 
@@ -13,27 +13,22 @@ echo "📤 Uploading setup scripts to RunPod..."
 echo "Host: $RUNPOD_USER@$RUNPOD_HOST:$RUNPOD_PORT"
 echo ""
 
-# Create scripts directory on RunPod
-ssh -i $SSH_KEY -p $RUNPOD_PORT $RUNPOD_USER@$RUNPOD_HOST \
-    "mkdir -p /workspace/scripts"
-
-# Upload scripts
+# Upload scripts directly to /workspace
 echo "Uploading scripts..."
 scp -i $SSH_KEY -P $RUNPOD_PORT \
-    setup-runpod-glm4.sh \
-    download-glm4.sh \
-    configure-yarn.sh \
-    start-vllm-glm4.sh \
+    build-native-llama.sh \
+    start-llama-server-native.sh \
     start-compression-proxy.sh \
-    start-all-services-glm4.sh \
+    start-all-native.sh \
+    stop-all.sh \
     compression_proxy.py \
-    $RUNPOD_USER@$RUNPOD_HOST:/workspace/scripts/
+    $RUNPOD_USER@$RUNPOD_HOST:/workspace/
 
 # Make scripts executable
 echo ""
 echo "Making scripts executable..."
 ssh -i $SSH_KEY -p $RUNPOD_PORT $RUNPOD_USER@$RUNPOD_HOST \
-    "chmod +x /workspace/scripts/*.sh"
+    "chmod +x /workspace/*.sh"
 
 echo ""
 echo "✅ Upload complete!"
@@ -42,8 +37,11 @@ echo "Next steps (SSH into RunPod):"
 echo "  ssh -i $SSH_KEY -p $RUNPOD_PORT $RUNPOD_USER@$RUNPOD_HOST"
 echo ""
 echo "Then run:"
-echo "  1. bash /workspace/scripts/setup-runpod-glm4.sh"
-echo "  2. bash /workspace/scripts/download-glm4.sh"
-echo "  3. bash /workspace/scripts/configure-yarn.sh"
-echo "  4. bash /workspace/scripts/start-all-services-glm4.sh"
+echo "  cd /workspace"
+echo "  ./stop-all.sh                    # Stop any running servers"
+echo "  ./build-native-llama.sh          # Build native llama.cpp (first time only)"
+echo "  ./start-all-native.sh            # Start native llama-server + proxy"
+echo ""
+echo "Or use llama-cpp-python instead:"
+echo "  ./start-all.sh                   # Start llama-cpp-python + proxy"
 
