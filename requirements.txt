@@ -1,0 +1,23 @@
+# RunPod LLM Server Requirements
+# Install llama-cpp-python separately with CUDA support:
+# pip install --upgrade llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 --no-cache-dir
+
+# Core dependencies with minimum versions
+jinja2>=3.1.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.0.0
+requests>=2.31.0
+
+# LLM and compression
+llmlingua>=0.2.1
+sentence-transformers>=2.3.0
+
+# Hugging Face
+hf_transfer>=0.1.5
+
+# Additional server dependencies
+sse-starlette>=2.0.0
+anyio>=4.0.0
+
+
