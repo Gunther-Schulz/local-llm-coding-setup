@@ -20,6 +20,9 @@ scp -i $SSH_KEY -P $RUNPOD_PORT \
     start-llama-server-native.sh \
     start-compression-proxy.sh \
     start-all-native.sh \
+    start-all-vllm.sh \
+    setup-vllm.sh \
+    start-vllm-server.sh \
     stop-all.sh \
     compression_proxy.py \
     $RUNPOD_USER@$RUNPOD_HOST:/workspace/

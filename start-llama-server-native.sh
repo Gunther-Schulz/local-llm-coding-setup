@@ -8,11 +8,13 @@ cd /workspace/llama.cpp-native/build/bin
   --ctx-size 81920 \
   --rope-scale 2.5 \
   --no-context-shift \
-  --threads 8 \
+  --threads 16 \
   --n-gpu-layers -1 \
-  --batch-size 128 \
-  --ubatch-size 128 \
+  --batch-size 256 \
+  --ubatch-size 256 \
+  --parallel 1 \
   --flash-attn on \
   --cont-batching \
-  --jinja
+  --jinja \
+  --cache-ram 0
 

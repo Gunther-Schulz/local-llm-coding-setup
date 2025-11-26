@@ -7,8 +7,8 @@ cd /workspace
 
 # Clone llama.cpp if not exists
 if [ ! -d "llama.cpp-native" ]; then
-    echo "Cloning llama.cpp..."
-    git clone --depth 1 https://github.com/ggerganov/llama.cpp.git llama.cpp-native
+    echo "Cloning llama.cpp (patched fork)..."
+    git clone --depth 1 https://github.com/Gunther-Schulz/llama.cpp.git llama.cpp-native
 fi
 
 cd llama.cpp-native

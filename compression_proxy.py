@@ -11,15 +11,17 @@ from llmlingua import PromptCompressor
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-LLAMA_SERVER_URL = "http://localhost:8000"
+BACKEND_SERVER_URL = "http://localhost:8000"  # vLLM or llama.cpp OpenAI-compatible server
 # Start compressing well before the model's 80K context limit so we never
-# send more than ~n_ctx tokens to llama.cpp.
+# send more than ~n_ctx tokens to the backend model server.
 COMPRESSION_THRESHOLD = 40000
 # Keep the last few real turns uncompressed; everything older is eligible
 # for summarization when we cross the threshold.
 KEEP_RECENT_MESSAGES = 4
 # Hard safety cap on prompt tokens we send to llama.cpp (n_ctx is 81920)
-MAX_PROMPT_TOKENS = 78000
+# Leave some headroom for generated tokens; with 70K prompt tokens we still have
+# ~10K tokens available for completion before hitting the 81K context limit.
+MAX_PROMPT_TOKENS = 70000
 
 conversation_cache: Dict[str, List[Dict]] = {}
 # Rolling summary per conversation (single synthetic message)
@@ -244,7 +246,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
         # For streaming requests, transparently proxy SSE without JSON decoding
         if stream:
             upstream = requests.post(
-                f"{LLAMA_SERVER_URL}/v1/chat/completions",
+                f"{BACKEND_SERVER_URL}/v1/chat/completions",
                 json=llama_request,
                 timeout=300,
                 stream=True,
@@ -268,7 +270,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
 
         # Non-streaming: expect a single JSON object
         response = requests.post(
-            f"{LLAMA_SERVER_URL}/v1/chat/completions",
+            f"{BACKEND_SERVER_URL}/v1/chat/completions",
             json=llama_request,
             timeout=300,
         )
@@ -288,7 +290,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
 
 async def handle_list_models():
     try:
-        response = requests.get(f"{LLAMA_SERVER_URL}/v1/models", timeout=30)
+        response = requests.get(f"{BACKEND_SERVER_URL}/v1/models", timeout=30)
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         try:

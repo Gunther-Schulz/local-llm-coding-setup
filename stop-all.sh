@@ -7,6 +7,9 @@ pkill -9 -f 'llama_cpp.server' && echo 'Stopped llama-cpp-python server' || echo
 # Kill native llama-server (port 8000)
 pkill -9 -f 'llama-server' && echo 'Stopped native llama-server' || echo 'No native llama-server running'
 
+# Kill vLLM server (port 8000)
+pkill -9 -f 'vllm.entrypoints.openai.api_server' && echo 'Stopped vLLM server' || echo 'No vLLM server running'
+
 # Kill compression proxy (port 8002)
 pkill -9 -f 'compression_proxy.py' && echo 'Stopped compression proxy' || echo 'No compression proxy running'
 
