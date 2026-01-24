@@ -42,6 +42,10 @@ class ChatCompletionRequest(BaseModel):
     messages: List[Message]
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = None
+    # Some clients (including newer OpenAI-compatible ones) use
+    # `max_completion_tokens` instead of `max_tokens`. We support both and
+    # clamp them together so that vLLM / llama.cpp never see an unsafe value.
+    max_completion_tokens: Optional[int] = None
     stream: Optional[bool] = False
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
@@ -215,8 +219,9 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             final_messages.append(final_msg)
         
         # Build request with all parameters, explicitly including tool calling.
-        # Preserve the client's stream preference, but clamp max_tokens so that
-        # prompt_tokens + max_tokens never exceeds the backend context window.
+        # Preserve the client's stream preference, but clamp max_tokens /
+        # max_completion_tokens so that prompt_tokens + max_tokens never
+        # exceeds the backend context window.
         stream = bool(request.stream)
 
         # Approximate backend context limit (must match --ctx-size on the server)
@@ -225,7 +230,19 @@ async def handle_chat_completions(request: ChatCompletionRequest):
         prompt_tokens = total_tokens(final_messages)
         max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
 
-        requested_max = request.max_tokens if request.max_tokens is not None else max_completion_allowed
+        # Respect either max_tokens or max_completion_tokens from the client,
+        # whichever is provided (or both); clamp to what the backend can handle.
+        requested_from_client = None
+        if request.max_tokens is not None:
+            requested_from_client = request.max_tokens
+        if request.max_completion_tokens is not None:
+            # If both are set, prefer the more conservative (smaller) value.
+            if requested_from_client is None:
+                requested_from_client = request.max_completion_tokens
+            else:
+                requested_from_client = min(requested_from_client, request.max_completion_tokens)
+
+        requested_max = requested_from_client if requested_from_client is not None else max_completion_allowed
         effective_max_tokens = max(1, min(requested_max, max_completion_allowed))
 
         llama_request = {
@@ -233,6 +250,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             "messages": final_messages,
             "temperature": request.temperature,
             "max_tokens": effective_max_tokens,
+            "max_completion_tokens": effective_max_tokens,
             "stream": stream,
         }
         

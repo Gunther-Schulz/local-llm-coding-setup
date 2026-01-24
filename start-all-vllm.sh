@@ -1,5 +1,6 @@
 #!/bin/bash
-cd /workspace
+ROOT="${WORKSPACE:-${RUNPOD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}}"
+cd "$ROOT"
 
 ./start-vllm-server.sh &
 VLLM_PID=$!

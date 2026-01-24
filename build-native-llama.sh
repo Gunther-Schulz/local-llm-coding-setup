@@ -1,9 +1,11 @@
 #!/bin/bash
 set -e
 
+ROOT="${WORKSPACE:-${RUNPOD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}}"
+
 echo "Building native llama.cpp with CUDA support..."
 
-cd /workspace
+cd "$ROOT"
 
 # Clone llama.cpp if not exists (official upstream)
 if [ ! -d "llama.cpp-native" ]; then
@@ -16,7 +18,7 @@ cd llama.cpp-native
 # Check if already built
 if [ -f "build/bin/llama-server" ]; then
     echo "✅ llama-server already built!"
-    echo "Location: /workspace/llama.cpp-native/build/bin/llama-server"
+    echo "Location: $ROOT/llama.cpp-native/build/bin/llama-server"
     exit 0
 fi
 
@@ -25,7 +27,13 @@ COMPUTE_CAP=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1
 echo "GPU Compute Capability: ${COMPUTE_CAP}"
 
 echo "Installing ccache for faster compilation..."
-apt-get update -qq && apt-get install -y -qq ccache > /dev/null 2>&1 || echo "ccache install failed, continuing anyway..."
+if command -v pacman &>/dev/null; then
+  sudo pacman -S --noconfirm ccache 2>/dev/null || true
+elif command -v apt-get &>/dev/null; then
+  (apt-get update -qq && apt-get install -y -qq ccache) 2>/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ccache) 2>/dev/null || true
+else
+  echo "ccache not installed (optional); continuing."
+fi
 
 echo "Building with CUDA support using CMake (this will take 5-10 minutes)..."
 

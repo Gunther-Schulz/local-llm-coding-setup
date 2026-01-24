@@ -1,8 +1,9 @@
 #!/bin/bash
-cd /workspace/llama.cpp-native/build/bin
+ROOT="${WORKSPACE:-${RUNPOD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}}"
+cd "$ROOT/llama.cpp-native/build/bin"
 
 ./llama-server \
-  --model /workspace/models/qwen2.5-coder-14b-q4_k_m/qwen2.5-coder-14b-instruct-q4_k_m.gguf \
+  --model "$ROOT/models/qwen2.5-coder-14b-q4_k_m/qwen2.5-coder-14b-instruct-q4_k_m.gguf" \
   --host 0.0.0.0 \
   --port 8000 \
   --ctx-size 32768 \
