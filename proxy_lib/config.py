@@ -12,9 +12,9 @@ MODEL_MAX_CONTEXT = int(os.environ.get("MODEL_MAX_CONTEXT", "32768"))
 BACKEND_SERVER_URL = "http://localhost:8000"
 
 # Dynamic context limits
-COMPRESSION_THRESHOLD = int(MODEL_MAX_CONTEXT * 0.75)  # Start compressing at 75%
+COMPRESSION_THRESHOLD = int(MODEL_MAX_CONTEXT * 0.60)  # Start compressing at 60% (more aggressive)
 KEEP_RECENT_MESSAGES = 4
-MAX_PROMPT_TOKENS = int(MODEL_MAX_CONTEXT * 0.92)  # Leave 8% for completion
+MAX_PROMPT_TOKENS = int(MODEL_MAX_CONTEXT * 0.85)  # Leave 15% for completion (more conservative)
 
 # Tiktoken availability
 try:

@@ -1,5 +1,9 @@
-# Model selection (local preference)
+# Configuration (local preferences)
+.llm-config
 .current-model
+.current-model.bak
+.context-mode
+.context-mode.bak
 
 # Downloaded models (large files)
 models/**/*.gguf

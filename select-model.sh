@@ -8,8 +8,12 @@ ROOT="${WORKSPACE:-${RUNPOD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && p
 # Export ROOT so library can use it
 export ROOT
 
-# Load model selector library
+# Load libraries
+source "$ROOT/lib/config-manager.sh"
 source "$ROOT/lib/model-selector.sh"
+
+# Auto-migrate from old dot-files if they exist
+migrate_from_dotfiles
 
 echo ""
 echo "════════════════════════════════════════════════════════════════"

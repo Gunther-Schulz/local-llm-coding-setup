@@ -41,7 +41,7 @@ def get_conversation_id(messages: List[Dict]) -> str:
 
 
 def total_tokens(messages: List[Dict], tools: List[Dict] = None) -> int:
-    """Calculate total tokens for messages and tools"""
+    """Calculate total tokens for messages and tools with overhead"""
     import json
     
     # Message tokens
@@ -49,14 +49,20 @@ def total_tokens(messages: List[Dict], tools: List[Dict] = None) -> int:
     for m in messages:
         content = m.get("content", "")
         text_parts.append(extract_text_from_content(content))
+        
+        # Add overhead for message structure (role, formatting, etc.)
+        # Each message has ~10 tokens of overhead
+        text_parts.append(" " * 40)  # ~10 tokens overhead per message
     
     message_text = " ".join(text_parts)
     message_tokens = estimate_tokens(message_text)
     
-    # Tool tokens
+    # Tool tokens (tools add significant overhead)
     tool_tokens = 0
     if tools:
         tools_json = json.dumps(tools)
         tool_tokens = estimate_tokens(tools_json)
+        # Tools have additional template overhead
+        tool_tokens = int(tool_tokens * 1.2)  # Add 20% overhead for tool template
     
     return message_tokens + tool_tokens

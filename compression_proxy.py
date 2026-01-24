@@ -97,16 +97,38 @@ async def handle_chat_completions(request: ChatCompletionRequest):
         if DEBUG_MODE:
             print(f"[DEBUG] Tokens: prompt={prompt_tokens}, max_completion={max_completion_allowed}")
         
-        # Enforce token limit
+        # If prompt is too large, force compression before rejecting
         if prompt_tokens > MAX_PROMPT_TOKENS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Prompt too large: {prompt_tokens} tokens (max: {MAX_PROMPT_TOKENS})"
-            )
+            if DEBUG_MODE:
+                print(f"[DEBUG] Prompt too large ({prompt_tokens}), forcing compression")
+            
+            from proxy_lib.compression import compress_messages
+            final_messages = compress_messages(final_messages, keep_recent=2)
+            
+            # Recalculate after compression
+            prompt_tokens = total_tokens(final_messages, request.tools)
+            max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
+            
+            if DEBUG_MODE:
+                print(f"[DEBUG] After compression: prompt={prompt_tokens}, max_completion={max_completion_allowed}")
+            
+            # Still too large? Reject
+            if prompt_tokens > MAX_PROMPT_TOKENS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Prompt too large even after compression: {prompt_tokens} tokens (max: {MAX_PROMPT_TOKENS})"
+                )
         
-        # Determine effective max_tokens
+        # Determine effective max_tokens - be more conservative
         requested = request.max_tokens or request.max_completion_tokens
-        effective_max_tokens = max(1, min(requested or max_completion_allowed, max_completion_allowed))
+        
+        # Cap requested tokens to what's actually available
+        if requested and requested > max_completion_allowed:
+            if DEBUG_MODE:
+                print(f"[DEBUG] Requested {requested} tokens, but only {max_completion_allowed} available - capping")
+            requested = max_completion_allowed
+        
+        effective_max_tokens = requested if requested else min(max_completion_allowed, 2048)
         
         # Clean messages: ensure only valid fields, remove None values
         cleaned_messages = []
@@ -149,7 +171,12 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             backend_request["presence_penalty"] = request.presence_penalty
         
         if DEBUG_MODE:
-            print(f"[DEBUG] Request to vLLM: {json.dumps({k: v for k, v in backend_request.items() if k != 'messages'}, indent=2)}")
+            print(f"[DEBUG] Request to vLLM:")
+            print(f"[DEBUG]   Messages: {len(backend_request['messages'])}")
+            print(f"[DEBUG]   Max tokens: {backend_request['max_tokens']}")
+            print(f"[DEBUG]   Estimated prompt tokens: {prompt_tokens}")
+            print(f"[DEBUG]   Total with completion: {prompt_tokens + backend_request['max_tokens']}")
+            print(f"[DEBUG]   Context limit: {BACKEND_CTX_LIMIT}")
         
         # Handle streaming
         if request.stream:
@@ -228,16 +255,18 @@ if __name__ == "__main__":
     
     debug_status = os.environ.get("DEBUG", "0") == "1"
     
-    # Startup banner
-    print(f"🚀 Starting compression proxy on port 8002")
-    print(f"   Backend: {BACKEND_SERVER_URL}")
-    print(f"   Model context: {MODEL_MAX_CONTEXT} tokens")
-    print(f"   Compression threshold: {COMPRESSION_THRESHOLD} tokens")
-    print(f"   Max prompt: {MAX_PROMPT_TOKENS} tokens")
-    print(f"   Tool format: {MODEL_TOOL_FORMAT}")
-    print(f"   Debug: {'ENABLED' if debug_status else 'DISABLED'}")
+    # Startup banner - print to stderr so it appears before uvicorn output
+    import sys
+    print(f"🚀 Starting compression proxy on port 8002", file=sys.stderr)
+    print(f"   Backend: {BACKEND_SERVER_URL}", file=sys.stderr)
+    print(f"   Model context: {MODEL_MAX_CONTEXT} tokens", file=sys.stderr)
+    print(f"   Compression threshold: {COMPRESSION_THRESHOLD} tokens", file=sys.stderr)
+    print(f"   Max prompt: {MAX_PROMPT_TOKENS} tokens", file=sys.stderr)
+    print(f"   Tool format: {MODEL_TOOL_FORMAT}", file=sys.stderr)
+    print(f"   Debug: {'ENABLED' if debug_status else 'DISABLED'}", file=sys.stderr)
     if not debug_status:
-        print(f"   (use -d or --debug for full logging)")
-    print()
+        print(f"   (use -d or --debug for full logging)", file=sys.stderr)
+    print(file=sys.stderr)
+    sys.stderr.flush()
     
     uvicorn.run(app, host="0.0.0.0", port=8002)

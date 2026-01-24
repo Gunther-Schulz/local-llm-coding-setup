@@ -39,45 +39,60 @@ LOG_FILE="$ROOT/compression-proxy.log"
 DEBUG_FLAG=""
 if [ "$1" = "-d" ] || [ "$1" = "--debug" ]; then
     DEBUG_FLAG="--debug"
+    export DEBUG=1
     echo "🚀 Starting compression proxy in DEBUG mode..."
 else
     echo "🚀 Starting compression proxy..."
     echo "  (use: ./start-compression-proxy.sh --debug for full logging)"
 fi
 
-# Load model metadata from environment (if set by start-all-vllm.sh) or saved selection
-CURRENT_MODEL_FILE="$ROOT/.current-model"
+# Load config manager and model selector
+source "$ROOT/lib/config-manager.sh"
+source "$ROOT/lib/model-selector.sh"
 
-if [[ -n "$MODEL_TOOL_FORMAT" && -n "$MODEL_MAX_CONTEXT" ]]; then
-    # Environment variables already set (by start-all-vllm.sh or manual export)
-    echo "Using model config from environment:"
-    echo "  Tool format: ${MODEL_TOOL_FORMAT}"
-    echo "  Max context: ${MODEL_MAX_CONTEXT}"
-elif [[ -f "$CURRENT_MODEL_FILE" ]]; then
-    # No environment vars set, load from saved model selection
-    SELECTED_MODEL=$(cat "$CURRENT_MODEL_FILE")
+# Load model configuration if not already set by start-all-vllm.sh
+if [[ -z "$MODEL_TOOL_FORMAT" || -z "$MODEL_MAX_CONTEXT" ]]; then
+    # Get current model from centralized config
+    CURRENT_MODEL=$(get_current_model)
     
-    # Source the model selector library to get config
-    source "$ROOT/lib/model-selector.sh"
-    
-    # Load and export config
-    if export_model_config "$SELECTED_MODEL" 2>/dev/null; then
-        echo "Loaded configuration for model: $SELECTED_MODEL"
+    if [[ -n "$CURRENT_MODEL" ]]; then
+        # Export model configuration
+        if export_model_config "$CURRENT_MODEL" >/dev/null 2>&1; then
+            echo "Loaded configuration for model: $CURRENT_MODEL"
+            
+            # Load context mode and update MODEL_MAX_CONTEXT if extended
+            EXTENDED_CONTEXT_MODE=$(get_extended_context_mode)
+            if [[ "$EXTENDED_CONTEXT_MODE" == "1" && -n "$MODEL_EXTENDED_CONTEXT" ]]; then
+                export MODEL_MAX_CONTEXT="$MODEL_EXTENDED_CONTEXT"
+                echo "  Context mode: Extended (${MODEL_MAX_CONTEXT} tokens)"
+            else
+                echo "  Context mode: Normal (${MODEL_MAX_CONTEXT} tokens)"
+            fi
+        else
+            echo "⚠️  Warning: Could not load model config, using defaults"
+            export MODEL_TOOL_FORMAT="auto"
+            export MODEL_MAX_CONTEXT="32768"
+        fi
     else
-        echo "⚠️  Warning: Could not load model config, using defaults"
+        echo "⚠️  Warning: No model selected, using defaults"
+        echo "   Run: ./select-model.sh to configure"
         export MODEL_TOOL_FORMAT="auto"
         export MODEL_MAX_CONTEXT="32768"
     fi
 else
-    # No env vars and no saved selection, use defaults
-    echo "⚠️  Warning: No model config found, using defaults"
-    export MODEL_TOOL_FORMAT="auto"
-    export MODEL_MAX_CONTEXT="32768"
+    echo "Using model config from environment"
 fi
 
 echo "  Backend: http://localhost:8000"
 echo "  Model context: ${MODEL_MAX_CONTEXT} tokens"
 echo "  Tool format: ${MODEL_TOOL_FORMAT}"
 echo "  Log file: $LOG_FILE (cleared)"
-python3 compression_proxy.py $DEBUG_FLAG >> "$LOG_FILE" 2>&1
+echo ""
+
+if [[ -n "$DEBUG_FLAG" ]]; then
+    echo "Starting proxy with debug enabled..."
+    python3 compression_proxy.py $DEBUG_FLAG 2>&1 | tee -a "$LOG_FILE"
+else
+    python3 compression_proxy.py >> "$LOG_FILE" 2>&1
+fi
 

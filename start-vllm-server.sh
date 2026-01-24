@@ -29,52 +29,50 @@ if [[ "$SHOW_HELP" == true ]]; then
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -m, --model MODEL_KEY    Select model by key (see models.conf)"
+    echo "  -m, --model MODEL_KEY    Override model (see models.conf)"
     echo "  -h, --help              Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                      # Interactive model selection menu"
-    echo "  $0 -m qwen3-30b-q2      # Load Qwen3-30B Q2_K directly"
-    echo "  $0 -m qwen2.5-14b-q4    # Load current Qwen2.5-14B"
+    echo "  $0                      # Use saved model from .llm-config"
+    echo "  $0 -m qwen3-30b-q2      # Temporarily override with Qwen3-30B Q2_K"
+    echo ""
+    echo "To select/change model:"
+    echo "  ./select-model.sh"
     echo ""
     exit 0
 fi
 
-# Load model selector library
+# Load config manager and model selector library
+source "$ROOT/lib/config-manager.sh"
 source "$ROOT/lib/model-selector.sh"
 
 # Determine which model to use (priority order):
-# 1. Command line -m flag (highest priority)
-# 2. Saved selection in .current-model
-# 3. Interactive menu (fallback)
-
-CURRENT_MODEL_FILE="$ROOT/.current-model"
+# 1. Command line -m flag (temporary override)
+# 2. Saved selection in .llm-config
 
 if [[ -z "$SELECTED_MODEL" ]]; then
     # No -m flag provided, check for saved selection
-    if [[ -f "$CURRENT_MODEL_FILE" ]]; then
-        SELECTED_MODEL=$(cat "$CURRENT_MODEL_FILE")
+    SELECTED_MODEL=$(get_current_model)
+    
+    if [[ -z "$SELECTED_MODEL" ]]; then
         echo ""
-        echo "Using saved model selection: $SELECTED_MODEL"
-        echo "(Override with: $0 -m MODEL_KEY or run ./select-model.sh to change)"
+        echo "⚠️  No model selected!"
         echo ""
-    else
-        # No saved selection, show interactive menu
+        echo "Please run: ./select-model.sh"
+        echo "Or use:     $0 -m MODEL_KEY"
         echo ""
-        echo "No model selected yet. Please choose a model:"
-        echo "(Tip: Run ./select-model.sh first to save your choice)"
-        echo ""
-        SELECTED_MODEL=$(select_model_interactive)
-        if [[ $? -ne 0 || -z "$SELECTED_MODEL" ]]; then
-            echo "No model selected. Exiting."
-            exit 1
-        fi
-        # Save the selection for future use
-        echo "$SELECTED_MODEL" > "$CURRENT_MODEL_FILE"
-        echo ""
-        echo "Model selection saved. Future runs will use this model automatically."
-        echo ""
+        exit 1
     fi
+    
+    echo ""
+    echo "Using saved model: $SELECTED_MODEL"
+    echo "(Change with: ./select-model.sh or override with: $0 -m MODEL_KEY)"
+    echo ""
+else
+    echo ""
+    echo "Using override model: $SELECTED_MODEL"
+    echo "(Saved model will be used on next normal start)"
+    echo ""
 fi
 
 # Export model configuration
@@ -136,20 +134,54 @@ LOG_FILE="$ROOT/vllm-server.log"
 # Clear log file on start
 > "$LOG_FILE"
 
+# Load context mode from centralized config
+if [[ -z "$EXTENDED_CONTEXT_MODE" ]]; then
+    EXTENDED_CONTEXT_MODE=$(get_extended_context_mode)
+fi
+
 echo "Starting vLLM server..."
 echo "Logs: $LOG_FILE"
 echo ""
+
+# Check if extended context mode is enabled
+ACTUAL_MAX_LEN="$VLLM_MAX_LEN"
+if [[ "$EXTENDED_CONTEXT_MODE" == "1" ]]; then
+    # Use extended context if available
+    if [[ -n "$MODEL_EXTENDED_CONTEXT" && "$MODEL_EXTENDED_CONTEXT" != "$VLLM_MAX_LEN" ]]; then
+        ACTUAL_MAX_LEN="$MODEL_EXTENDED_CONTEXT"
+        SCALE_FACTOR=$(awk "BEGIN {printf \"%.1f\", $MODEL_EXTENDED_CONTEXT / $VLLM_MAX_LEN}")
+        
+        # IMPORTANT: Update MODEL_MAX_CONTEXT for compression proxy
+        export MODEL_MAX_CONTEXT="$MODEL_EXTENDED_CONTEXT"
+        
+        echo "🟡 Extended context mode: $ACTUAL_MAX_LEN tokens (${SCALE_FACTOR}x with YaRN)"
+        echo "   ⚠️  Performance will be 50-70% slower"
+        echo ""
+    else
+        echo "⚠️  Extended mode requested but model doesn't support it"
+        echo "   Using normal context: $ACTUAL_MAX_LEN tokens"
+        echo ""
+    fi
+else
+    echo "🟢 Normal context mode: $ACTUAL_MAX_LEN tokens"
+    echo ""
+fi
 
 # Build vLLM command with model-specific tool parser
 VLLM_CMD="python -m vllm.entrypoints.openai.api_server \
   --model \"$VLLM_GGUF_MODEL\" \
   --tokenizer \"$VLLM_TOKENIZER_ID\" \
-  --served-model-name \"$SELECTED_MODEL_KEY\" \
+  --served-model-name \"$SELECTED_MODEL\" \
   --host \"$HOST\" \
   --port \"$PORT\" \
   --dtype \"$DTYPE\" \
-  --max-model-len \"$VLLM_MAX_LEN\" \
+  --max-model-len \"$ACTUAL_MAX_LEN\" \
   --tensor-parallel-size 1"
+
+# Add YaRN scaling if extended mode
+if [[ "$EXTENDED_CONTEXT_MODE" == "1" && -n "$SCALE_FACTOR" ]]; then
+    VLLM_CMD="$VLLM_CMD --rope-scaling '{\"type\":\"yarn\",\"factor\":${SCALE_FACTOR},\"original_max_position_embeddings\":${VLLM_MAX_LEN}}' --kv-cache-dtype fp8 --gpu-memory-utilization 0.85"
+fi
 
 # Add tool calling flags only if model supports it
 if [[ "$VLLM_TOOL_PARSER" != "none" ]]; then

@@ -129,11 +129,11 @@ download_model_function() {
 # Load available models from config
 load_models() {
     local models=()
-    while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc || [[ -n "$key" ]]; do
+    while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc || [[ -n "$key" ]]; do
         # Skip comments and empty lines
         [[ "$key" =~ ^#.*$ ]] && continue
         [[ -z "$key" ]] && continue
-        models+=("$key|$name|$path|$tokenizer|$ctx|$tool_parser|$tool_format|$url|$desc")
+        models+=("$key|$name|$path|$tokenizer|$ctx|$tool_parser|$tool_format|$url|$ext_ctx|$desc")
     done < "$MODELS_CONF"
     printf '%s\n' "${models[@]}"
 }
@@ -337,7 +337,7 @@ export_model_config() {
         return 1
     fi
     
-    IFS='|' read -r model_key model_name model_path tokenizer_id max_ctx tool_parser tool_format download_url description <<< "$config"
+    IFS='|' read -r model_key model_name model_path tokenizer_id max_ctx tool_parser tool_format download_url ext_ctx description <<< "$config"
     
     local full_path="$ROOT/$model_path"
     
@@ -349,9 +349,12 @@ export_model_config() {
     export VLLM_MAX_LEN="$max_ctx"
     export VLLM_TOOL_PARSER="$tool_parser"
     
+    # Don't auto-set EXTENDED_CONTEXT_MODE here - let user choose or use saved preference
+    
     # Export variables for compression proxy
     export MODEL_TOOL_FORMAT="$tool_format"
     export MODEL_MAX_CONTEXT="$max_ctx"
+    export MODEL_EXTENDED_CONTEXT="$ext_ctx"
     export MODEL_DOWNLOAD_URL="$download_url"
     
     return 0

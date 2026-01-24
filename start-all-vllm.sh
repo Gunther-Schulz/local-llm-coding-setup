@@ -35,27 +35,56 @@ echo "  🚀 Starting Complete LLM Stack"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
-# Check if model is selected
-CURRENT_MODEL_FILE="$ROOT/.current-model"
-if [[ -z "$MODEL_ARG" && ! -f "$CURRENT_MODEL_FILE" ]]; then
-    echo "⚠️  No model selected yet!"
+# Load config manager and model selector library
+source "$ROOT/lib/config-manager.sh"
+source "$ROOT/lib/model-selector.sh"
+
+# Determine which model to use
+SELECTED_MODEL=""
+if [[ -z "$MODEL_KEY" ]]; then
+    # No -m flag: use saved config
+    SELECTED_MODEL=$(get_current_model)
+    
+    if [[ -z "$SELECTED_MODEL" ]]; then
+        echo "⚠️  No model selected yet!"
+        echo ""
+        echo "Please run: ./select-model.sh"
+        echo "Or use: $0 -m MODEL_KEY"
+        echo ""
+        exit 1
+    fi
+    
+    echo "Using saved model: $SELECTED_MODEL"
+    echo "(Change with: ./select-model.sh)"
     echo ""
-    echo "Please run: ./select-model.sh"
-    echo "Or use: $0 -m MODEL_KEY"
+else
+    # -m flag provided: use override
+    SELECTED_MODEL="$MODEL_KEY"
+    echo "Using override model: $SELECTED_MODEL"
+    echo "(Saved model will be used on next normal start)"
     echo ""
-    exit 1
 fi
 
-if [[ -z "$MODEL_ARG" ]]; then
-    SELECTED_MODEL=$(cat "$CURRENT_MODEL_FILE")
-    echo "Using model: $SELECTED_MODEL"
-    echo "(Change with: ./select-model.sh or use -m flag)"
+# Export model configuration for both services
+export_model_config "$SELECTED_MODEL" >/dev/null
+
+# Load context mode from centralized config
+export EXTENDED_CONTEXT_MODE=$(get_extended_context_mode)
+
+# If extended mode, update MODEL_MAX_CONTEXT for proxy
+if [[ "$EXTENDED_CONTEXT_MODE" == "1" && -n "$MODEL_EXTENDED_CONTEXT" ]]; then
+    export MODEL_MAX_CONTEXT="$MODEL_EXTENDED_CONTEXT"
+    echo "ℹ️  Extended context mode: Using ${MODEL_MAX_CONTEXT} tokens"
     echo ""
 fi
 
-# Start vLLM server in background
+# Start vLLM server in background (pass -m flag if used)
 echo "Starting vLLM server..."
-./start-vllm-server.sh $MODEL_ARG &
+if [[ -n "$MODEL_KEY" ]]; then
+    ./start-vllm-server.sh -m "$MODEL_KEY" &
+else
+    ./start-vllm-server.sh &
+fi
 VLLM_PID=$!
 
 # Wait for vLLM to be ready
@@ -84,14 +113,8 @@ fi
 echo ""
 echo ""
 
-# Export model config for compression proxy
-# If -m flag was used, we need to export the config so proxy uses the same model
-if [[ -n "$MODEL_KEY" ]]; then
-    source "$ROOT/lib/model-selector.sh"
-    export_model_config "$MODEL_KEY" >/dev/null
-fi
-
 # Start compression proxy in background
+# (Model config and context mode already exported above)
 echo "Starting compression proxy..."
 ./start-compression-proxy.sh $DEBUG_FLAG &
 
