@@ -1,28 +1,39 @@
-# Models (too large for git)
-models/
-*.safetensors
-*.bin
-*.pt
-*.pth
+# Model selection (local preference)
+.current-model
+
+# Downloaded models (large files)
+models/**/*.gguf
+models/**/*.bin
+models/**/*.safetensors
+
+# Logs
+*.log
 
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+proxy_lib/__pycache__/
+*.pyo
+*.pyd
 .Python
-env/
-venv/
-ENV/
-.venv
+*.so
+*.egg
 *.egg-info/
 dist/
 build/
 
-# Conda
-.conda/
+# Environment
+.env
+.venv/
+venv/
+ENV/
+env/
 
-# IDE
+# Conda
+miniconda3/
+
+# Editor
 .vscode/
 .idea/
 *.swp
@@ -32,20 +43,3 @@ build/
 # OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
-
-# Environment files
-.env
-.env.local
-
-# Temporary files
-*.tmp
-*.temp
-
-
-
-
-
-llama.cpp

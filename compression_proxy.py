@@ -1,371 +1,243 @@
-from fastapi import FastAPI, HTTPException
+"""
+Compression Proxy for vLLM
+Provides OpenAI API compatibility with context compression and tool call transformation
+"""
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import List, Dict, Optional, Any, Union
 import requests
-import hashlib
 import json
-from llmlingua import PromptCompressor
+import traceback
+import argparse
+import sys
 
+# Import proxy modules
+from proxy_lib.config import (
+    DEBUG_MODE, BACKEND_SERVER_URL, MAX_PROMPT_TOKENS, MODEL_MAX_CONTEXT,
+    COMPRESSION_THRESHOLD, MODEL_TOOL_FORMAT
+)
+from proxy_lib.models import ChatCompletionRequest
+from proxy_lib.utils import get_conversation_id, total_tokens
+from proxy_lib.compression import manage_conversation_history
+from proxy_lib.streaming import stream_with_tool_transform
+from proxy_lib.tool_parser import transform_qwen_response
+
+# FastAPI app
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
-BACKEND_SERVER_URL = "http://localhost:8000"  # vLLM or llama.cpp OpenAI-compatible server
-# For a 32K-context backend (llama.cpp with --ctx-size 32768), start compressing
-# well before the hard limit so we never send more than ~n_ctx tokens.
-COMPRESSION_THRESHOLD = 24000
-# Keep the last few real turns uncompressed; everything older is eligible
-# for summarization when we cross the threshold.
-KEEP_RECENT_MESSAGES = 4
-# Hard safety cap on prompt tokens we send to the backend model server.
-# With ~30K prompt tokens we still leave room for completions before hitting
-# the 32K context limit; any excess history will be summarized or dropped.
-MAX_PROMPT_TOKENS = 30000
 
-conversation_cache: Dict[str, List[Dict]] = {}
-# Rolling summary per conversation (single synthetic message)
-conversation_summary: Dict[str, str] = {}
-compressed_cache: Dict[str, str] = {}
-
-compressor = PromptCompressor(model_name="microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank", use_llmlingua2=True)
-
-class Message(BaseModel):
-    role: str
-    content: str
-    tool_calls: Optional[List[Dict]] = None
-    tool_call_id: Optional[str] = None
-    name: Optional[str] = None
-
-class ChatCompletionRequest(BaseModel):
-    model: str
-    messages: List[Message]
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = None
-    # Some clients (including newer OpenAI-compatible ones) use
-    # `max_completion_tokens` instead of `max_tokens`. We support both and
-    # clamp them together so that vLLM / llama.cpp never see an unsafe value.
-    max_completion_tokens: Optional[int] = None
-    stream: Optional[bool] = False
-    tools: Optional[List[Dict[str, Any]]] = None
-    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
-    top_p: Optional[float] = None
-    frequency_penalty: Optional[float] = None
-    presence_penalty: Optional[float] = None
-
-def get_conversation_id(messages: List[Dict]) -> str:
-    if len(messages) > 0:
-        content = messages[0].get("content", "")[:100]
-        return hashlib.md5(content.encode()).hexdigest()
-    return "default"
-
-def estimate_tokens(text: str) -> int:
-    return len(text) // 4
-
-def compress_messages(messages: List[Dict], keep_recent: int = KEEP_RECENT_MESSAGES) -> List[Dict]:
-    """Compress old messages, but preserve tool calls and tool responses"""
-    if len(messages) <= keep_recent:
-        return messages
-    
-    recent_messages = messages[-keep_recent:]
-    old_messages = messages[:-keep_recent]
-    
-    print(f"[compression] compress_messages: total={len(messages)}, keep_recent={keep_recent}, to_compress={len(old_messages)}")
-    
-    compressed_old = []
-    for msg in old_messages:
-        # Don't compress messages with tool calls or tool responses
-        if msg.get("tool_calls") or msg.get("tool_call_id"):
-            compressed_old.append(msg)
-            continue
-        
-        msg_id = hashlib.md5(json.dumps(msg, sort_keys=True).encode()).hexdigest()
-        
-        if msg_id in compressed_cache:
-            compressed_content = compressed_cache[msg_id]
-        else:
-            try:
-                compressed = compressor.compress_prompt(msg["content"], rate=0.5, target_token=len(msg["content"].split()) // 2)
-                compressed_content = compressed["compressed_prompt"]
-                compressed_cache[msg_id] = compressed_content
-            except Exception as e:
-                print(f"Compression error: {e}")
-                compressed_content = msg["content"]
-        
-        compressed_old.append({"role": msg["role"], "content": f"[Compressed] {compressed_content}"})
-    
-    return compressed_old + recent_messages
-
-def optimize_context(messages: List[Dict], conversation_id: str) -> List[Dict]:
-    if conversation_id not in conversation_cache:
-        conversation_cache[conversation_id] = []
-    
-    conversation_cache[conversation_id].extend(messages)
-    
-    total_text = " ".join([msg.get("content", "") for msg in conversation_cache[conversation_id]])
-    estimated_tokens = estimate_tokens(total_text)
-    
-    if estimated_tokens > COMPRESSION_THRESHOLD:
-        print(f"[compression] optimize_context: convo={conversation_id}, est_tokens={estimated_tokens} > threshold={COMPRESSION_THRESHOLD} -> summarizing history")
-        conversation_cache[conversation_id] = compress_messages(conversation_cache[conversation_id])
-    
-    return conversation_cache[conversation_id]
-
-async def handle_chat_completions(request: ChatCompletionRequest):
-    try:
-        # Convert Pydantic messages to dicts for processing
-        incoming_messages = [msg.model_dump() for msg in request.messages]
-        
-        conversation_id = get_conversation_id(incoming_messages)
-
-        # Split into dev prompt (first), middle history, and recent real turns
-        dev_prompt = incoming_messages[0] if incoming_messages else None
-        rest = incoming_messages[1:] if len(incoming_messages) > 1 else []
-
-        recent = rest[-KEEP_RECENT_MESSAGES:] if KEEP_RECENT_MESSAGES > 0 else rest
-        middle = rest[:-KEEP_RECENT_MESSAGES] if KEEP_RECENT_MESSAGES > 0 else []
-
-        # Build / update rolling summary from middle + previous summary
-        prev_summary = conversation_summary.get(conversation_id, "")
-        if middle:
-            middle_text = " ".join(m.get("content", "") for m in middle)
-            summary_source = (prev_summary + " " + middle_text).strip()
-            try:
-                compressed = compressor.compress_prompt(
-                    summary_source,
-                    rate=0.5,
-                    target_token=max(1, len(summary_source.split()) // 4),
-                )
-                new_summary = compressed["compressed_prompt"]
-            except Exception as e:
-                print(f"Compression error (summary): {e}")
-                new_summary = summary_source
-            conversation_summary[conversation_id] = new_summary
-
-        summary_text = conversation_summary.get(conversation_id, "").strip()
-
-        optimized_messages: List[Dict] = []
-        if dev_prompt is not None:
-            optimized_messages.append(dev_prompt)
-        if summary_text:
-            optimized_messages.append(
-                {"role": "system", "content": f"[Conversation summary]\n{summary_text}"}
-            )
-        optimized_messages.extend(recent)
-
-        # Enforce a hard cap on total prompt tokens before calling the backend
-        def total_tokens(msgs: List[Dict]) -> int:
-            text = " ".join(m.get("content", "") for m in msgs)
-            return estimate_tokens(text)
-
-        # If over MAX_PROMPT_TOKENS, repeatedly compress summary and, if needed,
-        # drop the oldest non-dev/summary messages, but never drop dev_prompt.
-        current_tokens = total_tokens(optimized_messages)
-        if current_tokens > MAX_PROMPT_TOKENS:
-            print(f"[compression] hard-cap: initial_tokens={current_tokens}, max={MAX_PROMPT_TOKENS}, messages={len(optimized_messages)}")
-
-        while current_tokens > MAX_PROMPT_TOKENS:
-            # Try to compress the summary more if it exists
-            if len(optimized_messages) >= 2 and optimized_messages[1]["content"].startswith("[Conversation summary]"):
-                try:
-                    body = optimized_messages[1]["content"].split("\n", 1)[-1]
-                    compressed = compressor.compress_prompt(
-                        body,
-                        rate=0.5,
-                        target_token=max(1, len(body.split()) // 4),
-                    )
-                    new_summary = compressed["compressed_prompt"]
-                    optimized_messages[1]["content"] = f"[Conversation summary]\n{new_summary}"
-                except Exception as e:
-                    print(f"Compression error (summary hard-cap): {e}")
-            # If still too big and we have more than dev + summary + KEEP_RECENT_MESSAGES,
-            # drop the oldest non-dev/summary message.
-            current_tokens = total_tokens(optimized_messages)
-            if current_tokens > MAX_PROMPT_TOKENS:
-                if len(optimized_messages) > 2 + KEEP_RECENT_MESSAGES:
-                    # Remove the first non-dev/summary message after index 1
-                    dropped = optimized_messages.pop(2)
-                    print(f"[compression] hard-cap: dropped oldest message (role={dropped.get('role')}) to reduce tokens; now messages={len(optimized_messages)}")
-                else:
-                    # Nothing left to drop safely; break to avoid infinite loop
-                    break
-
-        final_tokens = total_tokens(optimized_messages)
-        if final_tokens != current_tokens or final_tokens > MAX_PROMPT_TOKENS:
-            print(f"[compression] hard-cap: final_tokens={final_tokens}, messages={len(optimized_messages)}")
-        
-        # NOW prepare messages for llama-cpp-python
-        # Keep tool-related fields (tool_calls, tool_call_id) intact for native tool calling
-        final_messages = []
-        for msg in optimized_messages:
-            role = msg.get("role")
-            content = msg.get("content", "")
-            
-            # Build the message with role and content
-            final_msg = {"role": role}
-            if isinstance(content, str):
-                final_msg["content"] = content
-            else:
-                final_msg["content"] = json.dumps(content)
-            
-            # Preserve tool_calls for assistant messages
-            if role == "assistant" and "tool_calls" in msg:
-                final_msg["tool_calls"] = msg["tool_calls"]
-            
-            # Preserve tool_call_id for tool response messages
-            if role == "tool" and "tool_call_id" in msg:
-                final_msg["tool_call_id"] = msg["tool_call_id"]
-            
-            final_messages.append(final_msg)
-        
-        # Build request with all parameters, explicitly including tool calling.
-        # Preserve the client's stream preference, but clamp max_tokens /
-        # max_completion_tokens so that prompt_tokens + max_tokens never
-        # exceeds the backend context window.
-        stream = bool(request.stream)
-
-        # Approximate backend context limit (must match --ctx-size on the server)
-        BACKEND_CTX_LIMIT = 32768
-        SAFETY_MARGIN = 1024
-        prompt_tokens = total_tokens(final_messages)
-        max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
-
-        # Respect either max_tokens or max_completion_tokens from the client,
-        # whichever is provided (or both); clamp to what the backend can handle.
-        requested_from_client = None
-        if request.max_tokens is not None:
-            requested_from_client = request.max_tokens
-        if request.max_completion_tokens is not None:
-            # If both are set, prefer the more conservative (smaller) value.
-            if requested_from_client is None:
-                requested_from_client = request.max_completion_tokens
-            else:
-                requested_from_client = min(requested_from_client, request.max_completion_tokens)
-
-        requested_max = requested_from_client if requested_from_client is not None else max_completion_allowed
-        effective_max_tokens = max(1, min(requested_max, max_completion_allowed))
-
-        llama_request = {
-            "model": request.model,
-            "messages": final_messages,
-            "temperature": request.temperature,
-            "max_tokens": effective_max_tokens,
-            "max_completion_tokens": effective_max_tokens,
-            "stream": stream,
-        }
-        
-        # Explicitly pass through tool calling parameters
-        if request.tools is not None:
-            llama_request["tools"] = request.tools
-        
-        if request.tool_choice is not None:
-            llama_request["tool_choice"] = request.tool_choice
-        
-        # Pass through other OpenAI-compatible parameters
-        if request.top_p is not None:
-            llama_request["top_p"] = request.top_p
-        
-        if request.frequency_penalty is not None:
-            llama_request["frequency_penalty"] = request.frequency_penalty
-        
-        if request.presence_penalty is not None:
-            llama_request["presence_penalty"] = request.presence_penalty
-
-        # For streaming requests, transparently proxy SSE without JSON decoding
-        if stream:
-            upstream = requests.post(
-                f"{BACKEND_SERVER_URL}/v1/chat/completions",
-                json=llama_request,
-                timeout=300,
-                stream=True,
-            )
-
-            if upstream.status_code != 200:
-                # Read text body for error context
-                detail = upstream.text
-                upstream.close()
-                raise HTTPException(status_code=upstream.status_code, detail=detail)
-
-            def iter_events():
-                try:
-                    for chunk in upstream.iter_content(chunk_size=None):
-                        if chunk:
-                            yield chunk
-                finally:
-                    upstream.close()
-
-            return StreamingResponse(iter_events(), media_type="text/event-stream")
-
-        # Non-streaming: expect a single JSON object
-        response = requests.post(
-            f"{BACKEND_SERVER_URL}/v1/chat/completions",
-            json=llama_request,
-            timeout=300,
-        )
-
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-
-        try:
-            return response.json()
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Invalid JSON response from llama server: {response.text[:500]}",
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-async def handle_list_models():
-    try:
-        response = requests.get(f"{BACKEND_SERVER_URL}/v1/models", timeout=30)
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-        try:
-            return response.json()
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=500, detail=f"Invalid JSON response from llama server: {response.text[:500]}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Root endpoint
-@app.get("/")
-async def root():
-    return {"status": "ok", "service": "compression-proxy"}
-
-# Health check
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    """Health check endpoint"""
+    return {"status": "ok"}
 
-# V1 root
-@app.get("/v1")
-async def v1_root():
-    return {"status": "ok", "service": "compression-proxy", "version": "v1"}
 
-# OpenAI-compatible endpoints (with /v1/ prefix)
 @app.post("/v1/chat/completions")
-async def chat_completions_v1(request: ChatCompletionRequest):
-    return await handle_chat_completions(request)
+async def chat_completions_v1(request: Request):
+    """Handle chat completions with logging and error handling"""
+    try:
+        # Get raw body for logging
+        raw_body = await request.body()
+        body_json = json.loads(raw_body)
+        
+        # Log request
+        client_ip = request.client.host if request.client else 'unknown'
+        print(f"[INFO] Request from {client_ip} - model: {body_json.get('model', 'N/A')}, "
+              f"messages: {len(body_json.get('messages', []))}, tools: {'tools' in body_json}")
+        
+        if DEBUG_MODE:
+            print(f"[DEBUG] Full request:\n{json.dumps(body_json, indent=2)}")
+        
+        # Parse and handle
+        chat_request = ChatCompletionRequest(**body_json)
+        result = await handle_chat_completions(chat_request)
+        
+        if DEBUG_MODE and isinstance(result, dict):
+            print(f"[DEBUG] Response:\n{json.dumps(result, indent=2)}")
+        
+        return result
+    
+    except Exception as e:
+        print(f"[ERROR] Request failed: {e}")
+        print(f"[ERROR] {traceback.format_exc()}")
+        raise
+
+
+async def handle_chat_completions(request: ChatCompletionRequest):
+    """Main handler for chat completions"""
+    try:
+        # Convert to dicts and normalize multimodal content
+        incoming_messages = []
+        for msg in request.messages:
+            msg_dict = msg.model_dump()
+            # Convert multimodal to plain text
+            if isinstance(msg.content, list):
+                msg_dict["content"] = msg.get_text_content()
+            # Remove None values that might cause validation issues
+            msg_dict = {k: v for k, v in msg_dict.items() if v is not None}
+            incoming_messages.append(msg_dict)
+        
+        # Get conversation ID and manage history
+        conversation_id = get_conversation_id(incoming_messages)
+        final_messages = manage_conversation_history(conversation_id, incoming_messages)
+        
+        # Calculate token budget
+        BACKEND_CTX_LIMIT = MODEL_MAX_CONTEXT
+        SAFETY_MARGIN = 2048
+        prompt_tokens = total_tokens(final_messages, request.tools)
+        max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
+        
+        if DEBUG_MODE:
+            print(f"[DEBUG] Tokens: prompt={prompt_tokens}, max_completion={max_completion_allowed}")
+        
+        # Enforce token limit
+        if prompt_tokens > MAX_PROMPT_TOKENS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Prompt too large: {prompt_tokens} tokens (max: {MAX_PROMPT_TOKENS})"
+            )
+        
+        # Determine effective max_tokens
+        requested = request.max_tokens or request.max_completion_tokens
+        effective_max_tokens = max(1, min(requested or max_completion_allowed, max_completion_allowed))
+        
+        # Clean messages: ensure only valid fields, remove None values
+        cleaned_messages = []
+        for msg in final_messages:
+            cleaned = {
+                "role": msg.get("role"),
+                "content": msg.get("content", "")
+            }
+            # Add optional fields only if present
+            if msg.get("tool_calls"):
+                cleaned["tool_calls"] = msg["tool_calls"]
+            if msg.get("tool_call_id"):
+                cleaned["tool_call_id"] = msg["tool_call_id"]
+            if msg.get("name"):
+                cleaned["name"] = msg["name"]
+            cleaned_messages.append(cleaned)
+        
+        # Build backend request
+        backend_request = {
+            "model": request.model,
+            "messages": cleaned_messages,
+            "max_tokens": effective_max_tokens,
+            "stream": bool(request.stream)
+        }
+        
+        # Optional parameters
+        if request.temperature is not None:
+            backend_request["temperature"] = request.temperature
+        if request.top_p is not None:
+            backend_request["top_p"] = request.top_p
+        if request.stop is not None:
+            backend_request["stop"] = request.stop
+        if request.tools is not None:
+            backend_request["tools"] = request.tools
+        if request.tool_choice is not None:
+            backend_request["tool_choice"] = request.tool_choice
+        if request.frequency_penalty is not None:
+            backend_request["frequency_penalty"] = request.frequency_penalty
+        if request.presence_penalty is not None:
+            backend_request["presence_penalty"] = request.presence_penalty
+        
+        if DEBUG_MODE:
+            print(f"[DEBUG] Request to vLLM: {json.dumps({k: v for k, v in backend_request.items() if k != 'messages'}, indent=2)}")
+        
+        # Handle streaming
+        if request.stream:
+            upstream = requests.post(
+                f"{BACKEND_SERVER_URL}/v1/chat/completions",
+                json=backend_request,
+                stream=True,
+                timeout=300
+            )
+            
+            if upstream.status_code != 200:
+                detail = upstream.text[:500]
+                raise HTTPException(status_code=upstream.status_code, detail=detail)
+            
+            return StreamingResponse(
+                stream_with_tool_transform(upstream, request.model),
+                media_type="text/event-stream"
+            )
+        
+        # Handle non-streaming
+        response = requests.post(
+            f"{BACKEND_SERVER_URL}/v1/chat/completions",
+            json=backend_request,
+            timeout=300
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        
+        response_data = response.json()
+        
+        # Transform tool calls if needed
+        if DEBUG_MODE:
+            print(f"[DEBUG] Response before transform: {json.dumps(response_data, indent=2)[:500]}")
+        
+        response_data = transform_qwen_response(response_data)
+        
+        return response_data
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Handler error: {e}")
+        print(f"[ERROR] {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/v1/models")
-async def list_models_v1():
-    return await handle_list_models()
+async def list_models():
+    """List available models"""
+    return {
+        "object": "list",
+        "data": [{
+            "id": "default",
+            "object": "model",
+            "created": 0,
+            "owned_by": "local"
+        }]
+    }
 
-# OpenAI-compatible endpoints (without /v1/ prefix - for compatibility)
-@app.post("/chat/completions")
-async def chat_completions_no_v1(request: ChatCompletionRequest):
-    return await handle_chat_completions(request)
-
-@app.get("/chat/completions")
-async def chat_completions_get():
-    raise HTTPException(status_code=405, detail="Method not allowed. Use POST for chat completions.")
-
-@app.get("/models")
-async def list_models_no_v1():
-    return await handle_list_models()
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Compression proxy for vLLM")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
+    args = parser.parse_args()
+    
+    # Set debug mode
+    if args.debug:
+        os.environ["DEBUG"] = "1"
+        import proxy_lib.config
+        proxy_lib.config.DEBUG_MODE = True
+    
+    debug_status = os.environ.get("DEBUG", "0") == "1"
+    
+    # Startup banner
+    print(f"🚀 Starting compression proxy on port 8002")
+    print(f"   Backend: {BACKEND_SERVER_URL}")
+    print(f"   Model context: {MODEL_MAX_CONTEXT} tokens")
+    print(f"   Compression threshold: {COMPRESSION_THRESHOLD} tokens")
+    print(f"   Max prompt: {MAX_PROMPT_TOKENS} tokens")
+    print(f"   Tool format: {MODEL_TOOL_FORMAT}")
+    print(f"   Debug: {'ENABLED' if debug_status else 'DISABLED'}")
+    if not debug_status:
+        print(f"   (use -d or --debug for full logging)")
+    print()
+    
     uvicorn.run(app, host="0.0.0.0", port=8002)
-

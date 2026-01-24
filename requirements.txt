@@ -12,6 +12,7 @@ requests>=2.31.0
 # LLM and compression
 llmlingua>=0.2.1
 sentence-transformers>=2.3.0
+tiktoken>=0.6.0  # For accurate token counting in compression proxy
 vllm
 
 # Hugging Face (hf download fallback; hf_transfer helps when aria2/curl not used)
