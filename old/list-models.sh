@@ -17,8 +17,8 @@ if [[ -f "$CURRENT_MODEL_FILE" ]]; then
     CURRENT_MODEL=$(cat "$CURRENT_MODEL_FILE")
 fi
 
-# List all models
-while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc || [[ -n "$key" ]]; do
+# List all models (models.conf: key|name|path|tokenizer|ctx|tool_parser|tool_format|url|ext_ctx|desc)
+while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc || [[ -n "$key" ]]; do
     # Skip comments and empty lines
     [[ "$key" =~ ^#.*$ ]] && continue
     [[ -z "$key" ]] && continue

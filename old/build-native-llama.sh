@@ -26,14 +26,8 @@ echo "Detecting GPU compute capability..."
 COMPUTE_CAP=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
 echo "GPU Compute Capability: ${COMPUTE_CAP}"
 
-echo "Installing ccache for faster compilation..."
-if command -v pacman &>/dev/null; then
-  sudo pacman -S --noconfirm ccache 2>/dev/null || true
-elif command -v apt-get &>/dev/null; then
-  (apt-get update -qq && apt-get install -y -qq ccache) 2>/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ccache) 2>/dev/null || true
-else
-  echo "ccache not installed (optional); continuing."
-fi
+echo "Installing ccache for faster compilation (optional)..."
+sudo pacman -S --needed --noconfirm ccache 2>/dev/null || true
 
 echo "Building with CUDA support using CMake (this will take 5-10 minutes)..."
 

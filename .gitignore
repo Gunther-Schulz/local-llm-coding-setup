@@ -3,9 +3,21 @@
 
 # Runtime config (machine-specific)
 config/llm-config
+config/config.conf
 
 # Logs
 logs/
 
 # Test directories
 .test_wheel/
+
+# Models
+models/
+
+# External dependencies (llama.cpp, built locally)
+external/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

@@ -22,13 +22,18 @@ pkill -9 -f 'start-vllm-server.sh' && echo 'Stopped vLLM start script' || true
 # Kill compression proxy (port 8002)
 pkill -9 -f 'compression_proxy.py' && echo 'Stopped compression proxy' || echo 'No compression proxy running'
 
-# Force kill any processes on ports 8000 and 8002
+# Kill vision API (port 8004)
+pkill -9 -f 'vision-api-server.py' && echo 'Stopped vision API' || echo 'No vision API running'
+
+# Force kill any processes on ports 8000, 8002, and 8004
 if command -v fuser &> /dev/null; then
     fuser -k 8000/tcp 2>/dev/null && echo 'Killed process on port 8000' || echo 'No process on port 8000'
     fuser -k 8002/tcp 2>/dev/null && echo 'Killed process on port 8002' || echo 'No process on port 8002'
+    fuser -k 8004/tcp 2>/dev/null && echo 'Killed process on port 8004' || echo 'No process on port 8004'
 else
     lsof -ti:8000 | xargs -r kill -9 2>/dev/null && echo 'Killed process on port 8000' || echo 'No process on port 8000'
     lsof -ti:8002 | xargs -r kill -9 2>/dev/null && echo 'Killed process on port 8002' || echo 'No process on port 8002'
+    lsof -ti:8004 | xargs -r kill -9 2>/dev/null && echo 'Killed process on port 8004' || echo 'No process on port 8004'
 fi
 
 # Kill any remaining processes that might be holding GPU memory

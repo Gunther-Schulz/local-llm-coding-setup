@@ -21,6 +21,10 @@ from proxy_lib.utils import get_conversation_id, total_tokens
 from proxy_lib.compression import manage_conversation_history
 from proxy_lib.streaming import stream_with_tool_transform
 from proxy_lib.tool_parser import transform_qwen_response
+from proxy_lib.vision_router import (
+    has_image_content, extract_images_and_text,
+    query_vision_api, prepare_multimodal_request
+)
 
 # FastAPI app
 app = FastAPI()
@@ -73,16 +77,38 @@ async def chat_completions_v1(request: Request):
 async def handle_chat_completions(request: ChatCompletionRequest):
     """Main handler for chat completions"""
     try:
-        # Convert to dicts and normalize multimodal content
+        # Convert to dicts
         incoming_messages = []
         for msg in request.messages:
             msg_dict = msg.model_dump()
-            # Convert multimodal to plain text
-            if isinstance(msg.content, list):
-                msg_dict["content"] = msg.get_text_content()
             # Remove None values that might cause validation issues
             msg_dict = {k: v for k, v in msg_dict.items() if v is not None}
             incoming_messages.append(msg_dict)
+        
+        # Check for images and process with vision API if present
+        if has_image_content(incoming_messages):
+            if DEBUG_MODE:
+                print("[DEBUG] Image detected, routing to vision API")
+            
+            has_imgs, text_msgs, image_msgs = extract_images_and_text(incoming_messages)
+            
+            # Query vision API for image description
+            vision_description = await query_vision_api(image_msgs, max_tokens=512)
+            
+            if DEBUG_MODE:
+                print(f"[DEBUG] Vision description: {vision_description[:200]}...")
+            
+            # Replace images with vision descriptions for LLM
+            incoming_messages = prepare_multimodal_request(incoming_messages, vision_description)
+        else:
+            # No images - normalize multimodal text content
+            for i, msg in enumerate(incoming_messages):
+                if isinstance(msg.get("content"), list):
+                    text_parts = []
+                    for item in msg["content"]:
+                        if isinstance(item, dict) and item.get("type") in ("text", "input_text"):
+                            text_parts.append(item.get("text", ""))
+                    incoming_messages[i]["content"] = " ".join(text_parts)
         
         # Get conversation ID and manage history
         conversation_id = get_conversation_id(incoming_messages)

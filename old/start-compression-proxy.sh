@@ -86,8 +86,12 @@ fi
 echo "  Backend: http://localhost:8000"
 echo "  Model context: ${MODEL_MAX_CONTEXT} tokens"
 echo "  Tool format: ${MODEL_TOOL_FORMAT}"
+echo "  Vision API: http://localhost:8004"
 echo "  Log file: $LOG_FILE (cleared)"
 echo ""
+
+# Export vision API URL
+export VISION_API_URL="http://localhost:8004"
 
 if [[ -n "$DEBUG_FLAG" ]]; then
     echo "Starting proxy with debug enabled..."

@@ -8,7 +8,8 @@ ROOT="${WORKSPACE:-${RUNPOD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && p
 # Load model selector library
 source "$ROOT/lib/model-selector.sh"
 
-# Model download URLs
+# Legacy/override: use when models.conf download_url is "none" or unset.
+# Should match models.conf download_url when both exist.
 declare -A MODEL_URLS=(
     ["qwen3-30b-q2"]="https://huggingface.co/mradermacher/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct.Q2_K.gguf"
     ["qwen3-30b-q3_k_s"]="https://huggingface.co/mradermacher/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct.Q3_K_S.gguf"
@@ -24,15 +25,15 @@ echo ""
 # Show available models
 echo "Available models to download:"
 echo ""
-local i=1
-local models=()
+i=1
+models=()
 
-while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc || [[ -n "$key" ]]; do
+while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc || [[ -n "$key" ]]; do
     [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
     
-    local full_path="$ROOT/$path"
-    local status="✓ Downloaded"
-    local action="skip"
+    full_path="$ROOT/$path"
+    status="✓ Downloaded"
+    action="skip"
     
     if [[ ! -f "$full_path" ]]; then
         status="✗ Not downloaded"
@@ -76,7 +77,7 @@ download_model() {
         return 1
     fi
     
-    IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc <<< "$config"
+    IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc <<< "$config"
     
     local full_path="$ROOT/$path"
     local dir=$(dirname "$full_path")
@@ -87,8 +88,14 @@ download_model() {
         return 0
     fi
     
-    # Check if URL exists
-    if [[ -z "${MODEL_URLS[$model_key]}" ]]; then
+    # URL: prefer models.conf (download_url); fallback to MODEL_URLS for legacy/override
+    local the_url=""
+    if [[ -n "$url" && "$url" != "none" ]]; then
+        the_url="$url"
+    elif [[ -n "${MODEL_URLS[$model_key]:-}" ]]; then
+        the_url="${MODEL_URLS[$model_key]}"
+    fi
+    if [[ -z "$the_url" ]]; then
         echo "ERROR: No download URL configured for '$model_key'"
         echo "Please download manually from HuggingFace and place in: $full_path"
         return 1
@@ -98,7 +105,7 @@ download_model() {
     mkdir -p "$dir"
     
     # Download with best available tool
-    local url="${MODEL_URLS[$model_key]}"
+    local url="$the_url"
     echo "Downloading from: $url"
     echo "Destination: $full_path"
     echo ""
@@ -152,12 +159,8 @@ download_model() {
     else
         echo "ERROR: No download tool found"
         echo ""
-        echo "Install aria2c for FASTEST downloads:"
-        echo "  sudo pacman -S aria2        # CachyOS/Arch"
-        echo "  sudo apt install aria2      # Ubuntu/Debian"
-        echo ""
-        echo "Or install huggingface-cli:"
-        echo "  pip install -U huggingface_hub[cli] hf-transfer"
+        echo "Install aria2: sudo pacman -S aria2"
+        echo "Or: pip install -U huggingface_hub[cli] hf-transfer"
         return 1
     fi
     

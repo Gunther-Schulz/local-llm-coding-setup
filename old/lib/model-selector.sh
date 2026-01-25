@@ -1,7 +1,10 @@
 #!/bin/bash
 # Model selector library for vLLM server
 
-MODELS_CONF="${MODELS_CONF:-$ROOT/models.conf}"
+ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+source "$ROOT/lib/conf.sh"
+source "$ROOT/lib/download.sh"
+MODELS_CONF=$(conf_path "models")
 
 # Download a model (internal function)
 # All output goes to stderr so it's visible when called from select_model_interactive
@@ -20,7 +23,7 @@ download_model_function() {
         return 1
     fi
     
-    IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc <<< "$config"
+    IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc <<< "$config"
     
     local full_path="$ROOT/$path"
     local dir=$(dirname "$full_path")
@@ -128,28 +131,15 @@ download_model_function() {
 
 # Load available models from config
 load_models() {
-    local models=()
-    while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc || [[ -n "$key" ]]; do
-        # Skip comments and empty lines
-        [[ "$key" =~ ^#.*$ ]] && continue
-        [[ -z "$key" ]] && continue
-        models+=("$key|$name|$path|$tokenizer|$ctx|$tool_parser|$tool_format|$url|$ext_ctx|$desc")
-    done < "$MODELS_CONF"
-    printf '%s\n' "${models[@]}"
+    conf_iter "models"
 }
 
 # Get model config by key
+# models.conf: key|name|path|tokenizer|ctx|tool_parser|tool_format|download_url|ext_ctx|desc
 get_model_config() {
-    local search_key="$1"
-    while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc || [[ -n "$key" ]]; do
-        # Skip comments and empty lines
-        [[ "$key" =~ ^#.*$ ]] && continue
-        [[ -z "$key" ]] && continue
-        if [[ "$key" == "$search_key" ]]; then
-            echo "$key|$name|$path|$tokenizer|$ctx|$tool_parser|$tool_format|$url|$desc"
-            return 0
-        fi
-    done < "$MODELS_CONF"
+    local line
+    line=$(conf_get "models" "$1")
+    [[ -n "$line" ]] && { echo "$line"; return 0; }
     return 1
 }
 
@@ -172,7 +162,7 @@ select_model_interactive() {
         return 1
     fi
     
-    while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc || [[ -n "$key" ]]; do
+    while IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc || [[ -n "$key" ]]; do
         # Skip comments and empty lines
         [[ "$key" =~ ^#.*$ ]] && continue
         [[ -z "$key" ]] && continue
@@ -210,7 +200,7 @@ select_model_interactive() {
         echo "" >&2
         
         ((i++))
-    done < "$MODELS_CONF"
+    done < <(conf_iter "models")
     
     echo "════════════════════════════════════════════════════════════════" >&2
     echo "" >&2
@@ -235,7 +225,7 @@ select_model_interactive() {
             # Check if model file exists and is valid
             local config
             config=$(get_model_config "$clean_key")
-            IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url desc <<< "$config"
+            IFS='|' read -r key name path tokenizer ctx tool_parser tool_format url ext_ctx desc <<< "$config"
             local full_path="$ROOT/$path"
             
             # Check if file missing or incomplete
