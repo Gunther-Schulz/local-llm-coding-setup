@@ -13,7 +13,6 @@ logs/
 
 # Models
 models/
-
 # External dependencies (llama.cpp, built locally)
 external/
 

@@ -226,32 +226,33 @@ async def handle_chat_completions(request: ChatCompletionRequest):
     
     # Send to backend
     try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            backend_response = await client.post(
+        # Handle streaming separately (don't make two requests!)
+        if request.stream:
+            import requests
+            sync_response = requests.post(
                 f"{VLLM_URL}/v1/chat/completions",
                 json=backend_request,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                stream=True,
+                timeout=180.0
             )
-            backend_response.raise_for_status()
+            sync_response.raise_for_status()
             
-            # Handle streaming
-            if request.stream:
-                # Use requests for streaming (httpx async streaming is complex)
-                import requests
-                sync_response = requests.post(
+            return StreamingResponse(
+                stream_with_tool_transform(sync_response, request.model),
+                media_type="text/event-stream"
+            )
+        else:
+            # Non-streaming
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                backend_response = await client.post(
                     f"{VLLM_URL}/v1/chat/completions",
                     json=backend_request,
-                    headers={"Content-Type": "application/json"},
-                    stream=True
+                    headers={"Content-Type": "application/json"}
                 )
-                sync_response.raise_for_status()
+                backend_response.raise_for_status()
                 
-                return StreamingResponse(
-                    stream_with_tool_transform(sync_response, request.model),
-                    media_type="text/event-stream"
-                )
-            else:
-                # Non-streaming: transform tool calls if needed
+                # Transform tool calls if needed
                 response_data = backend_response.json()
                 response_data = transform_qwen_response(response_data)
                 return response_data

@@ -20,6 +20,7 @@ class StreamState:
         self.finish_reason = None
         self.first_chunk_id = None
         self.vllm_sent_tool_calls = False
+        self.tool_call_count = 0
         self.model_name = model_name
         self.created_time = int(time.time())
     
@@ -48,11 +49,12 @@ def process_stream_end(state: StreamState) -> Generator[str, None, None]:
     
     # Log summary
     if DEBUG:
+        total_tool_calls = (len(tool_calls) if tool_calls else 0) + state.tool_call_count
         print(f"[DEBUG] ===== STREAM SUMMARY =====")
         print(f"[DEBUG]   Chunks: {state.chunk_count}")
         print(f"[DEBUG]   Content: {len(state.accumulated_content)} chars")
-        print(f"[DEBUG]   Tool calls: {len(tool_calls) if tool_calls else 0}")
-        print(f"[DEBUG]   Finish: {'tool_calls' if tool_calls else state.finish_reason}")
+        print(f"[DEBUG]   Tool calls: {total_tool_calls} (vLLM: {state.tool_call_count}, parsed: {len(tool_calls) if tool_calls else 0})")
+        print(f"[DEBUG]   Finish: {state.finish_reason}")
         print(f"[DEBUG] ==========================")
     
     # Always send [DONE]
@@ -114,6 +116,7 @@ def stream_with_tool_transform(upstream, model_name: str) -> Generator[str, None
                         
                         if "tool_calls" in delta and delta["tool_calls"]:
                             state.vllm_sent_tool_calls = True
+                            state.tool_call_count += len(delta["tool_calls"])
                             if DEBUG:
                                 print(f"[DEBUG] vLLM sent tool_calls (native parser worked!)")
                         
