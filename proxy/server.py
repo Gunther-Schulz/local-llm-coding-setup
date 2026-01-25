@@ -14,6 +14,7 @@ from stack.settings import (
     MODEL_MAX_CONTEXT,
     COMPRESSION_THRESHOLD,
     COMPRESSION_ENABLED,
+    KEEP_RECENT_MESSAGES,
     SAFETY_MARGIN
 )
 from proxy.utils import total_tokens, extract_text_from_content
@@ -145,26 +146,25 @@ async def handle_chat_completions(request: ChatCompletionRequest):
     if DEBUG:
         print(f"[DEBUG] Incoming: {len(final_messages)} messages, ~{prompt_tokens} tokens")
     
-    # Only compress if prompt is too large
+    # Compress if prompt exceeds compression threshold
+    if COMPRESSION_ENABLED and prompt_tokens > COMPRESSION_THRESHOLD:
+        if DEBUG:
+            print(f"[DEBUG] Prompt exceeds threshold ({prompt_tokens} > {COMPRESSION_THRESHOLD}), compressing...")
+        
+        final_messages = compress_messages(final_messages, keep_recent=KEEP_RECENT_MESSAGES)
+        prompt_tokens = total_tokens(final_messages, request.tools)
+        
+        if DEBUG:
+            print(f"[DEBUG] After compression: {len(final_messages)} messages, ~{prompt_tokens} tokens")
+    
+    # If still too large after compression (or if compression disabled), enforce hard limit
     if prompt_tokens > MAX_PROMPT_TOKENS:
         if DEBUG:
-            print(f"[DEBUG] Prompt exceeds limit ({prompt_tokens} > {MAX_PROMPT_TOKENS}), compressing...")
+            print(f"[DEBUG] Prompt exceeds MAX ({prompt_tokens} > {MAX_PROMPT_TOKENS}), truncating...")
         
-        if COMPRESSION_ENABLED:
-            final_messages = compress_messages(final_messages, keep_recent=1)
-            prompt_tokens = total_tokens(final_messages, request.tools)
-            
-            if DEBUG:
-                print(f"[DEBUG] After compression: {len(final_messages)} messages, ~{prompt_tokens} tokens")
-        
-        # If still too large after compression, truncate to recent messages only
-        if prompt_tokens > MAX_PROMPT_TOKENS:
-            if DEBUG:
-                print(f"[DEBUG] Still too large, truncating to recent messages only")
-            
-            # Keep only the most recent messages that fit
-            final_messages = final_messages[-4:]  # Last 4 messages minimum
-            prompt_tokens = total_tokens(final_messages, request.tools)
+        # Keep only the most recent messages that fit
+        final_messages = final_messages[-4:]  # Last 4 messages minimum
+        prompt_tokens = total_tokens(final_messages, request.tools)
     
     max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
     

@@ -1,8 +1,12 @@
 """Vision detection and routing logic."""
+import hashlib
 import httpx
 from typing import List, Dict, Any, Tuple
 
 from stack.settings import VISION_URL as VISION_API_URL, DEBUG
+
+# Cache for vision analysis results (image_hash -> description)
+_vision_cache: Dict[str, str] = {}
 
 
 def has_image_content(messages: List[Dict[str, Any]]) -> bool:
@@ -60,12 +64,50 @@ def extract_images_and_text(messages: List[Dict[str, Any]]) -> Tuple[bool, List[
     return has_images, text_messages, image_messages
 
 
+def _hash_image(image_data: str) -> str:
+    """Create a hash of image data for caching."""
+    return hashlib.sha256(image_data.encode()).hexdigest()[:16]
+
+
+def _extract_image_hash(messages: List[Dict[str, Any]]) -> str:
+    """Extract and hash the image content from messages for cache key."""
+    for msg in messages:
+        content = msg.get("content", [])
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    image_url = item.get("image_url", {})
+                    if isinstance(image_url, dict):
+                        url = image_url.get("url", "")
+                    else:
+                        url = image_url
+                    # Hash the image data URL
+                    return _hash_image(url)
+    return ""
+
+
 async def query_vision_api(messages: List[Dict[str, Any]], max_tokens: int = 512) -> Dict[str, Any]:
     """
-    Query the vision API server.
+    Query the vision API server with caching.
     
-    For Phase 1, this will fail gracefully if vision server isn't running.
+    Caches results based on image content hash to avoid re-analyzing the same image.
     """
+    # Check cache first
+    image_hash = _extract_image_hash(messages)
+    if image_hash and image_hash in _vision_cache:
+        if DEBUG:
+            print(f"[DEBUG] Vision cache HIT for image {image_hash}")
+        return {
+            "choices": [{
+                "message": {
+                    "content": _vision_cache[image_hash]
+                }
+            }]
+        }
+    
+    if DEBUG and image_hash:
+        print(f"[DEBUG] Vision cache MISS for image {image_hash}, analyzing...")
+    
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
@@ -76,7 +118,17 @@ async def query_vision_api(messages: List[Dict[str, Any]], max_tokens: int = 512
                 }
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            
+            # Cache the result
+            if image_hash and "choices" in result and result["choices"]:
+                content = result["choices"][0].get("message", {}).get("content", "")
+                if content:
+                    _vision_cache[image_hash] = content
+                    if DEBUG:
+                        print(f"[DEBUG] Cached vision result for image {image_hash}")
+            
+            return result
     except httpx.ConnectError:
         if DEBUG:
             print(f"Vision API not available at {VISION_API_URL}")
