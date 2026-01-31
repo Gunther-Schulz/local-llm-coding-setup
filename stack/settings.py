@@ -109,6 +109,14 @@ TOOL_RESPONSE_NO_CONDENSE_PATHS = [p.strip() for p in _TOOL_NO_CONDENSE.split(",
 # Prepend the first user message to the summary so task context (e.g. "use CLIPPY") is kept
 PRESERVE_FIRST_USER_IN_SUMMARY = os.getenv("PRESERVE_FIRST_USER_IN_SUMMARY", "1") == "1"
 
+# Virtual tool (search_compressed_conversation): max compressed conversations to keep in memory.
+# 0 or negative = unlimited (full history). Positive = FIFO eviction after that many.
+COMPRESSED_STORE_MAX_CONVERSATIONS = int(os.getenv("COMPRESSED_STORE_MAX_CONVERSATIONS", "0"))
+# Caps on virtual tool results (0 = no cap / unlimited)
+COMPRESSED_STORE_RESULT_MAX_CHARS = int(os.getenv("COMPRESSED_STORE_RESULT_MAX_CHARS", "4000"))
+COMPRESSED_STORE_SEARCH_TOP_K = int(os.getenv("COMPRESSED_STORE_SEARCH_TOP_K", "5"))
+COMPRESSED_STORE_SEARCH_MAX_CHARS = int(os.getenv("COMPRESSED_STORE_SEARCH_MAX_CHARS", "3500"))
+
 
 # ============================================================================
 # System message injection (for clients that don't send one, e.g. Continue)
@@ -230,5 +238,7 @@ def print_config_summary():
     print(f"Context Mgmt: Cursor-style (trigger on overflow only)")
     print(f"  Compression:  {'On' if COMPRESSION_ENABLED else 'Off'} (compress when prompt would exceed limit)")
     print(f"  Window Size:  {CONTEXT_WINDOW_SIZE} recent messages after summary")
+    print(f"  Compressed store: {'unlimited' if COMPRESSED_STORE_MAX_CONVERSATIONS <= 0 else f'max {COMPRESSED_STORE_MAX_CONVERSATIONS} conversations'}")
+    print(f"  Virtual tool caps: result={COMPRESSED_STORE_RESULT_MAX_CHARS or 'none'}, search_top_k={COMPRESSED_STORE_SEARCH_TOP_K or 'none'}, search_max_chars={COMPRESSED_STORE_SEARCH_MAX_CHARS or 'none'}")
     print(f"Debug:       {'On' if DEBUG else 'Off'}")
     print("=" * 70)

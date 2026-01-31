@@ -7,7 +7,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from proxy.models import ChatCompletionRequest
 from stack.settings import (
@@ -24,6 +24,12 @@ from stack.settings import (
     CAPABILITY_REMINDER_TEXT,
 )
 from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
+from proxy.context_manager import (
+    get_stored,
+    execute_virtual_tool,
+    VIRTUAL_TOOL_NAME,
+    VIRTUAL_TOOL_DEFINITION,
+)
 from proxy.services.context_service import ContextService
 from proxy.services.vision_service import VisionService
 from proxy.services.tool_service import ToolService
@@ -34,6 +40,55 @@ from proxy.services.interfaces import (
     ToolParserInterface,
     StreamingHandlerInterface
 )
+
+
+def _inject_virtual_tool_results(messages: List[Dict], conversation_id: str) -> tuple[List[Dict], bool]:
+    """
+    If the last message is assistant with tool_calls and one of them is our virtual tool
+    without a result, execute it and inject the tool result. Returns (modified_messages, injected_any).
+    """
+    if not messages:
+        return messages, False
+    idx = len(messages) - 1
+    while idx >= 0 and (messages[idx].get("role") != "assistant" or not messages[idx].get("tool_calls")):
+        idx -= 1
+    if idx < 0:
+        return messages, False
+    assistant_msg = messages[idx]
+    following = messages[idx + 1:]
+    tool_results_ordered = []
+    used = set()
+    injected = False
+    for tc in assistant_msg["tool_calls"]:
+        tid = tc.get("id")
+        fn = tc.get("function")
+        name = (fn.get("name") or "") if isinstance(fn, dict) else ""
+        # Find matching tool message in following
+        match_msg = None
+        for j, m in enumerate(following):
+            if j in used:
+                continue
+            if m.get("role") == "tool" and m.get("tool_call_id") == tid:
+                match_msg = m
+                used.add(j)
+                break
+        if match_msg is not None:
+            tool_results_ordered.append(match_msg)
+        elif name == VIRTUAL_TOOL_NAME:
+            args = {}
+            if isinstance(fn, dict) and fn.get("arguments"):
+                try:
+                    args = json.loads(fn["arguments"]) if isinstance(fn["arguments"], str) else fn["arguments"]
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            content = execute_virtual_tool(conversation_id, args)
+            tool_results_ordered.append({"role": "tool", "tool_call_id": tid, "content": content, "name": VIRTUAL_TOOL_NAME})
+            injected = True
+        # else: missing result for non-virtual tool; don't inject
+    if not injected:
+        return messages, False
+    new_messages = messages[: idx + 1] + tool_results_ordered + [m for j, m in enumerate(following) if j not in used]
+    return new_messages, True
 
 
 # Create FastAPI app
@@ -308,7 +363,17 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
     if request.stop is not None:
         backend_request["stop"] = request.stop
     if request.tools is not None:
-        backend_request["tools"] = request.tools
+        tools_list = list(request.tools)
+        # When we have stored compressed conversation, add virtual tool so the model can query it
+        if get_stored(conversation_id) and not any(
+            t.get("function", {}).get("name") == VIRTUAL_TOOL_NAME
+            for t in tools_list
+            if isinstance(t, dict) and t.get("type") == "function"
+        ):
+            tools_list.append(VIRTUAL_TOOL_DEFINITION)
+        backend_request["tools"] = tools_list
+    elif get_stored(conversation_id):
+        backend_request["tools"] = [VIRTUAL_TOOL_DEFINITION]
     if request.tool_choice is not None:
         backend_request["tool_choice"] = request.tool_choice
     if request.frequency_penalty is not None:
