@@ -43,7 +43,17 @@ def extract_text_from_content(content: Union[str, List[Dict[str, Any]]]) -> str:
 
 
 def get_conversation_id(messages: List[Dict]) -> str:
-    """Generate conversation ID from first message content."""
+    """Generate conversation ID from first non-system message content.
+    Avoids keying off the system message so conversations with the same
+    system prompt don't collide in the compressed store."""
+    for msg in messages:
+        if msg.get("role") == "system":
+            continue
+        content = msg.get("content", "")
+        content_text = extract_text_from_content(content)[:100]
+        if content_text.strip():
+            return hashlib.md5(content_text.encode()).hexdigest()
+    # Fallback: only system message(s) or empty – use first message
     if len(messages) > 0:
         content = messages[0].get("content", "")
         content_text = extract_text_from_content(content)[:100]

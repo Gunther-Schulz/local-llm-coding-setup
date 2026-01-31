@@ -16,13 +16,19 @@ import fnmatch
 import json
 import os
 import re
+import threading
 import time
 import httpx
 
-# In-memory store for compressed conversations: conversation_id -> { "messages", "summary" }
-_MAX_STORED_CONVERSATIONS = 50
+try:
+    from rapidfuzz import fuzz
+except ImportError:
+    fuzz = None  # optional: fall back to exact match only
+
+# In-memory store: conversation_id -> { "messages", "summary", "last_used" }
+# Eviction when COMPRESSED_STORE_MAX_CONVERSATIONS > 0: LRU by last_used (updated on get and store)
+_store_lock = threading.Lock()
 _compressed_store: Dict[str, Dict[str, Any]] = {}
-_store_order: List[str] = []
 
 from stack.settings import (
     DEBUG,
@@ -31,6 +37,9 @@ from stack.settings import (
     TOOL_RESPONSE_PREVIEW_CHARS,
     TOOL_RESPONSE_NO_CONDENSE_PATHS,
     PRESERVE_FIRST_USER_IN_SUMMARY,
+    COMPRESSION_SUMMARY_MODEL,
+    COMPRESSION_SUMMARY_TIMEOUT,
+    COMPRESSION_SECTION_FUZZ_RATIO,
     COMPRESSED_STORE_MAX_CONVERSATIONS,
     COMPRESSED_STORE_RESULT_MAX_CHARS,
     COMPRESSED_STORE_SEARCH_TOP_K,
@@ -111,54 +120,80 @@ VIRTUAL_TOOL_DEFINITION: Dict[str, Any] = {
     },
 }
 
-# Cap size of virtual tool result so we don't blow context
-VIRTUAL_TOOL_RESULT_MAX_CHARS = 4000
-# For keyword search: max messages to return, and max chars total
-SEARCH_TOP_K_MESSAGES = 5
-SEARCH_MAX_CHARS = 3500
-
-
 def _evict_store_if_needed():
-    """Evict oldest conversations when over limit. Skip eviction if COMPRESSED_STORE_MAX_CONVERSATIONS <= 0 (unlimited)."""
+    """Evict least recently used conversations when over limit (LRU by last_used).
+    Skip if COMPRESSED_STORE_MAX_CONVERSATIONS <= 0 (unlimited)."""
     max_n = COMPRESSED_STORE_MAX_CONVERSATIONS
     if max_n <= 0:
         return
-    while len(_compressed_store) >= max_n and _store_order:
-        cid = _store_order.pop(0)
-        _compressed_store.pop(cid, None)
+    while len(_compressed_store) >= max_n and _compressed_store:
+        cid = min(_compressed_store.keys(), key=lambda k: _compressed_store[k]["last_used"])
+        del _compressed_store[cid]
 
 
 def store_compressed(conversation_id: str, messages: List[Dict], summary: str) -> None:
     """Store full uncompressed messages and summary for this conversation. Replaces any previous
     snapshot for this conversation_id so we always keep one full history (multiple compression
     turns during a session overwrite with the latest full pre-compression state)."""
-    _evict_store_if_needed()
-    if conversation_id in _store_order:
-        _store_order.remove(conversation_id)
-    _store_order.append(conversation_id)
-    _compressed_store[conversation_id] = {"messages": list(messages), "summary": summary}
+    with _store_lock:
+        _evict_store_if_needed()
+        now = time.time()
+        _compressed_store[conversation_id] = {
+            "messages": list(messages),
+            "summary": summary,
+            "last_used": now,
+        }
 
 
 def get_stored(conversation_id: str) -> Optional[Dict[str, Any]]:
-    """Return stored { messages, summary } for a conversation, or None."""
-    return _compressed_store.get(conversation_id)
+    """Return stored { messages, summary } for a conversation, or None. Updates last_used on read (LRU)."""
+    with _store_lock:
+        entry = _compressed_store.get(conversation_id)
+        if entry:
+            entry["last_used"] = time.time()
+        return entry
 
 
 def _extract_section_from_summary(summary: str, section_key: str) -> str:
-    """Return the subsection of summary for the given section key, or empty string."""
+    """Return the subsection of summary for the given section key. Tries exact match, then fuzzy match (rapidfuzz) if available."""
     header = SECTION_PARAM_TO_HEADER.get(section_key)
     if not header:
         return ""
-    # Find this section and the next section (or end)
+    # 1) Exact match
     idx = summary.find(header)
-    if idx < 0:
+    if idx >= 0:
+        rest = summary[idx + len(header) :]
+        match = re.search(r"\n\d+\.\s+\w", rest)
+        end_offset = match.start() + 1 if match else len(rest)
+        block = summary[idx : idx + len(header) + end_offset]
+        return block.strip()
+    # 2) Fuzzy match (section number + best-matching line)
+    if fuzz is None:
         return ""
-    # Find next "N. " (section start) after this one; allow one or two spaces
-    rest = summary[idx + len(header) :]
-    match = re.search(r"\n\d+\.\s+\w", rest)
-    end_offset = match.start() + 1 if match else len(rest)
-    block = summary[idx : idx + len(header) + end_offset]
-    return block.strip()
+    min_ratio = max(0, min(100, COMPRESSION_SECTION_FUZZ_RATIO))
+    # Section number from canonical header (e.g. "1" from "1.  Primary Request...")
+    num_match = re.match(r"^(\d+)\.", header)
+    if not num_match:
+        return ""
+    section_num = num_match.group(1)
+    # Find all "N. " at line start in summary
+    pattern = re.compile(r"(?m)^(" + re.escape(section_num) + r")\.\s+(.*?)$", re.MULTILINE | re.DOTALL)
+    best_idx: Optional[int] = None
+    best_score = 0.0
+    for m in pattern.finditer(summary):
+        line = m.group(0).strip()
+        score = fuzz.ratio(line, header, score_cutoff=min_ratio - 10 if min_ratio > 10 else 0)
+        if score > best_score:
+            best_score = score
+            best_idx = m.start()
+    if best_idx is None or best_score < min_ratio:
+        return ""
+    # Extract block from best match to next section or end
+    rest = summary[best_idx:]
+    next_section = re.search(r"\n\d+\.\s+\w", rest[1:])  # skip first char so we don't match same line
+    end_offset = (next_section.start() + 1) if next_section else len(rest)
+    block = rest[:end_offset].strip()
+    return block
 
 
 def _message_content_text(msg: Dict) -> str:
@@ -178,7 +213,7 @@ def _message_content_text(msg: Dict) -> str:
 def execute_virtual_tool(conversation_id: str, arguments: Dict[str, Any]) -> str:
     """
     Execute the virtual tool: section, query, or message_index.
-    Returns a string (capped at VIRTUAL_TOOL_RESULT_MAX_CHARS) for the tool result content.
+    Returns a string (capped by COMPRESSED_STORE_RESULT_MAX_CHARS, or unlimited if 0) for the tool result content.
     """
     data = get_stored(conversation_id)
     if not data:
@@ -239,8 +274,9 @@ def execute_virtual_tool(conversation_id: str, arguments: Dict[str, Any]) -> str
     return result
 
 
-async def summarize_conversation_cursor_style(messages: List[Dict]) -> str:
-    """Use the LLM to produce a Cursor-style structured summary (sections like Primary Request, Key Concepts, Files, etc.)."""
+async def summarize_conversation_cursor_style(messages: List[Dict], model: Optional[str] = None) -> str:
+    """Use the LLM to produce a Cursor-style structured summary. Uses model if given, else COMPRESSION_SUMMARY_MODEL (fallback)."""
+    summary_model = (model or "").strip() or COMPRESSION_SUMMARY_MODEL
     conversation_text = "\n\n".join([
         f"{msg.get('role', 'user')}: {_extract_content_preview(msg, max_chars=800)}"
         for msg in messages
@@ -256,11 +292,11 @@ Conversation:
 Your structured summary (use the section numbers and titles above):"""
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=float(COMPRESSION_SUMMARY_TIMEOUT)) as client:
             response = await client.post(
                 f"{BACKEND_URL}/v1/chat/completions",
                 json={
-                    "model": "qwen3-30b-q2",
+                    "model": summary_model,
                     "messages": [{"role": "user", "content": summary_prompt}],
                     "max_tokens": 1500,
                     "temperature": 0.3
@@ -279,10 +315,12 @@ async def compress_cursor_style(
     messages: List[Dict],
     conversation_id: str,
     recent_count: int = 6,
+    model: Optional[str] = None,
 ) -> List[Dict]:
     """
     Cursor-style compression: one structured [Previous conversation summary] user message + last N messages.
     Use when prompt would exceed backend limit (overflow). Replaces old sliding-window + short summary.
+    model: used for the summarization LLM call; when given (e.g. request.model) uses the active model; else COMPRESSION_SUMMARY_MODEL.
     """
     # Separate system from conversation
     system_prompt = None
@@ -301,7 +339,7 @@ async def compress_cursor_style(
     if DEBUG:
         print(f"[DEBUG] Cursor-style compress: {len(old_messages)} old, {len(recent_messages)} recent (recent_count={recent_count})")
 
-    summary = await summarize_conversation_cursor_style(old_messages)
+    summary = await summarize_conversation_cursor_style(old_messages, model=model)
     if PRESERVE_FIRST_USER_IN_SUMMARY:
         first_user = next((m for m in old_messages if m.get("role") == "user"), None)
         if first_user:
