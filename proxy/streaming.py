@@ -131,10 +131,16 @@ def stream_with_tool_transform(
                                 state.finish_reason = choice["finish_reason"]
 
                             if "tool_calls" in delta and delta["tool_calls"]:
+                                first_tool_chunk = not state.vllm_sent_tool_calls
                                 state.vllm_sent_tool_calls = True
-                                state.tool_call_count += len(delta["tool_calls"])
-                                if DEBUG:
-                                    print(f"[DEBUG] vLLM sent tool_calls (native parser worked!)")
+                                n_this = len(delta["tool_calls"])
+                                state.tool_call_count += n_this
+                                if DEBUG and first_tool_chunk:
+                                    print(
+                                        f"[DEBUG] tool_calls stream started (request_id: {rid}, conversation_id: {cid}) "
+                                        f"| backend sends many small chunks; first delta has {n_this} entry(ies); "
+                                        f"total count in STREAM SUMMARY at end"
+                                    )
 
                             if "content" in delta and delta["content"]:
                                 state.accumulated_content += delta["content"]

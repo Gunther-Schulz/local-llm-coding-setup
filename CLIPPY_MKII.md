@@ -201,6 +201,12 @@ Two levels of design decisions:
 - If design is complete and verified → Mark as [VERIFIED] with evidence
 - If design has blocking issues discovered during investigation → Add to DESIGN ISSUES section
 
+**SPECIFIC REUSE DOCUMENTATION REQUIREMENT:**
+When making design decisions involving reuse of existing functionality:
+- Document whether the new implementation reuses existing code or duplicates it
+- If reusing, specify exactly which component/pattern is being reused and the location
+- If duplicating, explicitly document the specific justification for the duplication
+
 **DESIGN OUTPUT FORMAT:**
 - **INTERNALLY (for AI):** Collect detailed design information: implementation approach, structure, methods, patterns, rationale, specific component:line references, implementation strategy, implementation strategy
 - **OUTPUT (for human):** Show concise, readable format optimized for human consumption
@@ -495,6 +501,10 @@ IMPLEMENTATION DETAILS:
 - Implementation details are separate from design decisions - design is WHAT/WHY, implementation details are HOW/WHERE
 - Unverified patterns (discovered but not read via read_file) are assumptions → Add to ASSUMPTIONS section, not [RESOLVED]
 - "Pattern to follow is verified" requires V1-style verification (read_file from reference components), not discovery alone
+- **DRY ENFORCEMENT:** During implementation, explicitly check for code duplication before writing new code:
+  - Before implementing any new logic, search for existing implementations
+  - If similar functionality exists, document reuse in IMPLEMENTATION DETAILS
+  - If reimplementing, document the specific justification for the duplication
 
 **PROTOCOL VIOLATIONS - DO NOT:**
 - ❌ Mark [RESOLVED] after only reading structure/pattern (must read complete implementation)
@@ -602,6 +612,12 @@ Each "c" iteration widens investigation scope to new areas, deepens investigatio
   - NO → CANNOT proceed. Review tracker findings and design tracker for existing patterns.
   - YES → Evidence: [Checked tracker findings and design decisions]
 
+**CRITICAL: DRY Verification Before Implementation**
+Before implementing any new functionality, specifically verify that:
+- [ ] The logic being implemented does not duplicate existing functionality (C1.6 - Code duplication)
+- [ ] If similar functionality exists, identify and reuse it properly
+- [ ] Document in IMPLEMENTATION DETAILS if functionality is reused vs newly implemented
+
 FOR each code section being written:
 - Verify against C1 (component boundaries, single responsibility, abstraction levels)?
   - **C1.6 (Code duplication):** Am I duplicating existing logic? If yes, reuse existing component.
@@ -640,6 +656,11 @@ FOR each checklist item:
   - No violations found? → Mark [VERIFIED] with evidence
   - Violations found? → Mark [VIOLATION] with evidence, add to fix list
   - Not checked yet? → Optionally add to OUT OF SCOPE or ASSUMPTIONS as appropriate
+
+**SPECIFIC DRY VERIFICATION:**
+- During verification, explicitly check for code duplication violations (C1.6)
+- Ensure that any new implementation properly reuses existing patterns
+- If duplication was identified during implementation, verify that the justification is documented
 
 THEN: Show verification results to user.
 
@@ -884,6 +905,10 @@ IMPLEMENTATION READINESS: [READY] / [NOT READY]
   → CHECK: Is same logic repeated in multiple components?
   → CHECK: Are common patterns extracted to reusable components?
   → CHECK: Is core business logic duplicated unnecessarily?
+  → **CRITICAL ADDITION:** For code duplication specifically, ensure that when creating new functionality:
+    - Search for existing implementations of similar logic in the codebase
+    - Document if the logic is being reused vs reimplemented
+    - If reimplemented, explicitly document the justification in the tracker
 
 - ☑️ Data structures appropriate?
   → CHECK: Do data structures contain only data, or do they also contain behavior?
@@ -1187,4 +1212,4 @@ Format menu with clear visual separation and icons. Show ONLY options for curren
 
 ---
 
-*Last Updated: January 2025 (v15.17 - Added architectural alternatives evaluation to implementation strategy planning in A1.1 INVESTIGATE + DESIGN phase. Previous: v15.16)*
+*Last Updated: January 2026 (v15.18 - Enhanced DRY enforcement and reuse documentation requirements to prevent code duplication violations. Previous: v15.17)*
