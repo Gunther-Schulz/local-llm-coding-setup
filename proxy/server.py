@@ -2,6 +2,7 @@
 import json
 import time
 import traceback
+import uuid
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,13 +24,16 @@ from stack.settings import (
     COMPRESSION_NEAR_LIMIT_FRACTION,
 )
 from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
-from proxy.context_manager import manage_context, condense_tool_responses_with_context
-from proxy.vision_router import (
-    has_image_content, extract_images_and_text,
-    query_vision_api, prepare_multimodal_request
+from proxy.services.context_service import ContextService
+from proxy.services.vision_service import VisionService
+from proxy.services.tool_service import ToolService
+from proxy.services.streaming_service import StreamingService
+from proxy.services.interfaces import (
+    ContextManagerInterface,
+    VisionRouterInterface,
+    ToolParserInterface,
+    StreamingHandlerInterface
 )
-from proxy.tool_parser import transform_qwen_response
-from proxy.streaming import stream_with_tool_transform
 
 
 # Create FastAPI app
@@ -42,6 +46,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+# Import service manager for dependency injection
+from proxy.services import service_manager
+
+# Initialize services via service manager
+context_service = service_manager.context_service
+vision_service = service_manager.vision_service
+tool_service = service_manager.tool_service
+streaming_service = service_manager.streaming_service
 
 
 @app.on_event("startup")
@@ -77,14 +90,15 @@ async def list_models(request: Request):
 @app.post("/v1/chat/completions")
 async def chat_completions_v1(request: Request):
     """Handle chat completions with compression, vision routing, and tool transformation."""
+    request_id = request.headers.get("x-request-id") or f"req-{uuid.uuid4().hex[:12]}"
     try:
         # Get raw body
         raw_body = await request.body()
         body_json = json.loads(raw_body)
         
-        # Log request
+        # Log request (include request_id for correlation with Cursor / backend logs)
         client_ip = request.client.host if request.client else 'unknown'
-        print(f"[INFO] Request from {client_ip} - model: {body_json.get('model', 'N/A')}, "
+        print(f"[INFO] Request {request_id} from {client_ip} - model: {body_json.get('model', 'N/A')}, "
               f"messages: {len(body_json.get('messages', []))}, tools: {'tools' in body_json}")
         
         if DEBUG:
@@ -92,7 +106,7 @@ async def chat_completions_v1(request: Request):
         
         # Parse request
         chat_request = ChatCompletionRequest(**body_json)
-        result = await handle_chat_completions(chat_request)
+        result = await handle_chat_completions(chat_request, request_id=request_id)
         
         if DEBUG and isinstance(result, dict):
             print(f"[DEBUG] Response:\n{json.dumps(result, indent=2)}")
@@ -102,12 +116,12 @@ async def chat_completions_v1(request: Request):
     except HTTPException:
         raise  # Preserve 413, 502, 503 etc. – do not turn into 500
     except Exception as e:
-        print(f"[ERROR] Request failed: {e}")
+        print(f"[ERROR] Request {request_id} failed: {e}")
         print(f"[ERROR] {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def handle_chat_completions(request: ChatCompletionRequest):
+async def handle_chat_completions(request: ChatCompletionRequest, request_id: Optional[str] = None):
     """Main handler for chat completions."""
     _t0 = time.perf_counter()
     # Convert to dicts, preserving tool_calls and tool_call_id for multi-turn tool use
@@ -124,15 +138,15 @@ async def handle_chat_completions(request: ChatCompletionRequest):
               f"{sum(1 for m in incoming_messages if m.get('tool_call_id'))} tool result(s)")
     
     # Check for images and process with vision API if present
-    if has_image_content(incoming_messages):
+    if vision_service.has_image_content(incoming_messages):
         if DEBUG:
             print("[DEBUG] Image detected, routing to vision API")
         _t_vision = time.perf_counter()
 
-        has_imgs, text_msgs, image_msgs = extract_images_and_text(incoming_messages)
+        has_imgs, text_msgs, image_msgs = vision_service.extract_images_and_text(incoming_messages)
 
         # Query vision API for image description (this call can take 10s–2min; timeout 120s)
-        vision_result = await query_vision_api(image_msgs, max_tokens=512)
+        vision_result = await vision_service.query_vision_api(image_msgs, max_tokens=512)
         if DEBUG:
             print(f"[DEBUG] Vision API took {round((time.perf_counter() - _t_vision) * 1000)} ms")
         
@@ -153,6 +167,8 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             print(f"[DEBUG] Vision description: {vision_content[:200]}...")
         
         # Replace images with vision descriptions for LLM
+        # We'll use the original function since it's not in the service
+        from proxy.vision_router import prepare_multimodal_request
         incoming_messages = prepare_multimodal_request(text_msgs, image_msgs, vision_content)
     else:
         # No images - normalize multimodal text content
@@ -174,7 +190,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             and tokens_before_condense <= near_limit_threshold
         )
         if not skip_condense:
-            incoming_messages = condense_tool_responses_with_context(incoming_messages)
+            incoming_messages = context_service.condense_tool_responses_with_context(incoming_messages)
         elif DEBUG:
             print(f"[DEBUG] No tool condense (under {near_limit_threshold} tokens, near_limit mode)")
     else:
@@ -212,7 +228,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
         messages_summarized = max(0, conv_count - CONTEXT_WINDOW_SIZE)
         messages_kept = CONTEXT_WINDOW_SIZE
 
-        final_messages = await manage_context(
+        final_messages = await context_service.manage_context(
             incoming_messages,
             conversation_id,
             max_messages=CONTEXT_WINDOW_SIZE
@@ -243,7 +259,8 @@ async def handle_chat_completions(request: ChatCompletionRequest):
     if DEBUG:
         elapsed_ms = round((time.perf_counter() - _t0) * 1000)
         conv_id_short = (conversation_id[:12] + "..") if len(conversation_id) > 12 else conversation_id
-        print("[DEBUG] ---- context ----")
+        rid = request_id or "n/a"
+        print(f"[DEBUG] ---- context (request_id: {rid}) ----")
         print(f"[DEBUG]   stream: {bool(request.stream)}, conversation_id: {conv_id_short}, elapsed_ms: {elapsed_ms}")
         print(f"[DEBUG]   messages_in: {len(incoming_messages)}, tokens_in: {tokens_before_condense}")
         print(f"[DEBUG]   tool_condense: {tool_responses_condensed} response(s) condensed, tokens_after_condense: {tokens_after_condense}")
@@ -316,16 +333,25 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             )
             if not sync_response.ok:
                 body = sync_response.text
-                print(f"[ERROR] Backend HTTP error (streaming): {sync_response.status_code}")
+                rid = request_id or "n/a"
+                print(f"[ERROR] Request {rid} Backend HTTP error (streaming): {sync_response.status_code}")
                 print(f"[ERROR] Backend response: {body[:2000]}")
                 raise HTTPException(
                     status_code=502,
                     detail=f"Backend error ({sync_response.status_code}): {body[:500]}"
                 )
             if DEBUG:
-                print(f"[DEBUG] Request completed in {round((time.perf_counter() - _t0) * 1000)} ms (streaming)")
+                elapsed_ms = round((time.perf_counter() - _t0) * 1000)
+                conv_short = (conversation_id[:12] + "..") if conversation_id and len(conversation_id) > 12 else (conversation_id or "n/a")
+                print(
+                    f"[DEBUG] Backend 200, forwarding stream (request_id: {request_id or 'n/a'}, "
+                    f"conversation_id: {conv_short}, elapsed_ms: {elapsed_ms})"
+                )
             return StreamingResponse(
-                stream_with_tool_transform(sync_response, request.model),
+                service_manager.streaming_service.stream_with_tool_transform(
+                    sync_response, request.model,
+                    request_id=request_id, conversation_id=conversation_id
+                ),
                 media_type="text/event-stream"
             )
         else:
@@ -339,18 +365,20 @@ async def handle_chat_completions(request: ChatCompletionRequest):
                 backend_response.raise_for_status()
                 # Transform tool calls if needed
                 response_data = backend_response.json()
-                response_data = transform_qwen_response(response_data)
+                response_data = service_manager.tool_service.transform_qwen_response(response_data)
                 if DEBUG:
-                    print(f"[DEBUG] Request completed in {round((time.perf_counter() - _t0) * 1000)} ms (non-streaming)")
+                    print(f"[DEBUG] Request {request_id or 'n/a'} completed in {round((time.perf_counter() - _t0) * 1000)} ms (non-streaming)")
                 return response_data
     
     except httpx.HTTPStatusError as e:
-        print(f"[ERROR] Backend HTTP error: {e.response.status_code}")
+        rid = request_id or "n/a"
+        print(f"[ERROR] Request {rid} Backend HTTP error (non-streaming): {e.response.status_code}")
         print(f"[ERROR] {e.response.text}")
         raise HTTPException(
             status_code=e.response.status_code,
             detail=f"Backend error: {e.response.text}"
         )
     except Exception as e:
-        print(f"[ERROR] Backend request failed: {e}")
+        rid = request_id or "n/a"
+        print(f"[ERROR] Request {rid} Backend request failed: {e}")
         raise HTTPException(status_code=502, detail=f"Backend error: {str(e)}")
