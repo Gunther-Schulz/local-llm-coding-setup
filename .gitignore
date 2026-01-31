@@ -4,6 +4,7 @@
 # Runtime config (machine-specific)
 config/llm-config
 config/config.conf
+config/settings.env
 
 # Logs
 logs/
