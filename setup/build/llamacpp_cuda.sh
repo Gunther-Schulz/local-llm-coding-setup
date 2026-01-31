@@ -41,12 +41,15 @@ if [ ! -d "$LLAMACPP_DIR" ]; then
   echo ""
 else
   echo "✓ llama.cpp already at $LLAMACPP_DIR"
+  echo "  Pulling latest (for native tool-call parsing, e.g. Qwen3 Coder)..."
+  (cd "$LLAMACPP_DIR" && git fetch origin && git checkout master 2>/dev/null; git pull origin master 2>/dev/null) || true
   echo ""
 fi
 
-# Check if already built
-if [ -x "$BUILD_DIR/bin/llama-server" ] && [ -x "$BUILD_DIR/bin/llama-bench" ]; then
+# Check if already built (skip unless FORCE_LLAMACPP_REBUILD=1)
+if [ -z "$FORCE_LLAMACPP_REBUILD" ] && [ -x "$BUILD_DIR/bin/llama-server" ] && [ -x "$BUILD_DIR/bin/llama-bench" ]; then
   echo "✓ CUDA build already present: $BUILD_DIR/bin/"
+  echo "  (To get native tool-call parsing for Qwen: rm -rf $BUILD_DIR and run this script again, or FORCE_LLAMACPP_REBUILD=1)"
   echo ""
   exit 0
 fi
