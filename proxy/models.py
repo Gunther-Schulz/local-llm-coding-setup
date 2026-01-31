@@ -4,10 +4,14 @@ from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
-    """Chat message with text or multimodal content."""
+    """Chat message with text or multimodal content; supports tool calls and tool results."""
     role: str
-    content: Union[str, List[Dict[str, Any]]]
+    content: Optional[Union[str, List[Dict[str, Any]]]] = None
     name: Optional[str] = None
+    # Assistant message with tool use
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    # Tool result message (role='tool')
+    tool_call_id: Optional[str] = None
 
 
 class ToolCall(BaseModel):

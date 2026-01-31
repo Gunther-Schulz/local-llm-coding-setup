@@ -7,6 +7,28 @@ from typing import List, Dict, Optional
 from stack.settings import DEBUG, MODEL_TOOL_FORMAT
 
 
+def _extract_braced_json(s: str, start: int) -> tuple[Optional[str], int]:
+    """Extract a single {...} JSON object from s starting at start; return (json_str, end_pos)."""
+    i = s.find("{", start)
+    if i < 0:
+        return None, start
+    depth = 0
+    j = i
+    while j < len(s):
+        if s[j] == "{":
+            depth += 1
+        elif s[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return s[i : j + 1], j + 1
+        elif s[j] == '"' and (j == 0 or s[j - 1] != "\\"):
+            j += 1
+            while j < len(s) and (s[j] != '"' or s[j - 1] == "\\"):
+                j += 1
+        j += 1
+    return None, start
+
+
 def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
     """
     Parse Qwen tool calls from XML or JSON-in-markdown format.
@@ -19,33 +41,39 @@ def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
     """
     tool_calls = []
     
-    # Pattern 1: XML tags
-    xml_pattern = r'<(?:function|tool_call)>\s*(\{[^}]*\})\s*</(?:function|tool_call)>'
-    xml_matches = re.findall(xml_pattern, content, re.DOTALL)
-    
-    for match in xml_matches:
-        try:
-            tool_data = json.loads(match)
-            tool_call = {
-                "id": f"call_{uuid.uuid4().hex[:24]}",
-                "type": "function",
-                "function": {
-                    "name": tool_data.get("name", ""),
-                    "arguments": json.dumps(tool_data.get("arguments", {}))
+    # Pattern 1: XML tags (support nested braces in arguments)
+    for tag in ("function", "tool_call"):
+        pattern = re.compile(
+            rf"<{tag}\s*>(.*?)</{tag}>",
+            re.DOTALL,
+        )
+        for m in pattern.finditer(content):
+            inner = m.group(1).strip()
+            json_str, _ = _extract_braced_json(inner, 0)
+            if not json_str:
+                continue
+            try:
+                tool_data = json.loads(json_str)
+                tool_call = {
+                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                    "type": "function",
+                    "function": {
+                        "name": tool_data.get("name", ""),
+                        "arguments": json.dumps(tool_data.get("arguments", {}))
+                    }
                 }
-            }
-            tool_calls.append(tool_call)
-        except json.JSONDecodeError:
-            if DEBUG:
-                print(f"[DEBUG] Failed to parse XML tool call: {match[:100]}")
+                tool_calls.append(tool_call)
+            except json.JSONDecodeError:
+                if DEBUG:
+                    print(f"[DEBUG] Failed to parse XML tool call: {json_str[:100]}")
     
-    # Pattern 2: JSON in markdown
-    markdown_pattern = r'```(?:json)?\s*\n(\{[^`]+\})\s*\n```'
-    markdown_matches = re.findall(markdown_pattern, content, re.DOTALL)
-    
-    for match in markdown_matches:
+    # Pattern 2: JSON in markdown code blocks
+    for m in re.finditer(r"```(?:json)?\s*\n", content):
+        json_str, end_pos = _extract_braced_json(content, m.end())
+        if not json_str:
+            continue
         try:
-            tool_data = json.loads(match)
+            tool_data = json.loads(json_str)
             if "name" in tool_data:  # Looks like a tool call
                 tool_call = {
                     "id": f"call_{uuid.uuid4().hex[:24]}",
@@ -58,7 +86,7 @@ def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
                 tool_calls.append(tool_call)
         except json.JSONDecodeError:
             if DEBUG:
-                print(f"[DEBUG] Failed to parse markdown tool call: {match[:100]}")
+                print(f"[DEBUG] Failed to parse markdown tool call: {json_str[:100]}")
     
     return tool_calls if tool_calls else None
 

@@ -95,9 +95,13 @@ SAFETY_MARGIN = int(os.getenv("SAFETY_MARGIN", "1536"))  # Reserve for response
 # ============================================================================
 
 # Context management (Cursor-style: summarization + sliding window)
-COMPRESSION_THRESHOLD = int(os.getenv("COMPRESSION_THRESHOLD", "15000"))
-CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", "20"))
-MAX_ARCHIVE_MESSAGES = int(os.getenv("MAX_ARCHIVE_MESSAGES", "200"))
+COMPRESSION_THRESHOLD = int(os.getenv("COMPRESSION_THRESHOLD", "15000"))  # Trigger summarization when prompt tokens exceed this
+COMPRESSION_TRIGGER_MESSAGES = int(os.getenv("COMPRESSION_TRIGGER_MESSAGES", "30"))  # Or when message count exceeds this
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", "20"))  # Keep this many recent messages verbatim
+MAX_ARCHIVE_MESSAGES = int(os.getenv("MAX_ARCHIVE_MESSAGES", "200"))  # Max messages to keep in archive per conversation
+# Tool response condensing (messages with role=tool longer than this get preview only)
+TOOL_RESPONSE_MAX_VERBATIM = int(os.getenv("TOOL_RESPONSE_MAX_VERBATIM", "2000"))
+TOOL_RESPONSE_PREVIEW_CHARS = int(os.getenv("TOOL_RESPONSE_PREVIEW_CHARS", "500"))
 
 
 # ============================================================================
@@ -163,8 +167,8 @@ def print_config_summary():
     print(f"Context:     {MODEL_MAX_CONTEXT} tokens")
     print(f"Max Prompt:  {MAX_PROMPT_TOKENS} tokens")
     print(f"Context Mgmt: Cursor-style (summarization + window)")
-    print(f"  Threshold:    {COMPRESSION_THRESHOLD} tokens (triggers at 30 msgs OR this)")
-    print(f"  Window Size:  {CONTEXT_WINDOW_SIZE} messages (keep recent)")
+    print(f"  Threshold:    {COMPRESSION_THRESHOLD} tokens (or when messages > {COMPRESSION_TRIGGER_MESSAGES})")
+    print(f"  Window Size:  {CONTEXT_WINDOW_SIZE} messages (keep recent verbatim)")
     print(f"  Max Archive:  {MAX_ARCHIVE_MESSAGES} messages")
     print(f"Debug:       {'On' if DEBUG else 'Off'}")
     print("=" * 70)

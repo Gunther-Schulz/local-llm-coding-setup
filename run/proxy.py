@@ -5,28 +5,29 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Parse args FIRST to set DEBUG before any imports
+# Parse args first (don't set DEBUG yet – config may override)
 _ap = argparse.ArgumentParser(description="Start compression proxy server")
 _ap.add_argument("--host", default="0.0.0.0", help="Host to bind to")
 _ap.add_argument("--port", default="8002", help="Port to bind to")
 _ap.add_argument("--vllm-url", default="http://localhost:8000", help="vLLM backend URL")
 _ap.add_argument("--vision-url", default="http://localhost:8004", help="Vision API URL")
-_ap.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
+_ap.add_argument("-d", "--debug", action="store_true", help="Enable debug mode (or set DEBUG=1 in config/settings.env)")
 _ap.add_argument("-k", "--kill", action="store_true", help="Kill any existing proxy processes before starting")
 _args = _ap.parse_args()
 
-# Set environment variables BEFORE any imports
-os.environ["DEBUG"] = "1" if _args.debug else "0"
-os.environ["VLLM_URL"] = _args.vllm_url
-os.environ["VISION_API_URL"] = _args.vision_url
-
-# Ensure project root on path
+# Ensure project root on path before loading config
 if __name__ == "__main__":
     _runpod = Path(__file__).resolve().parents[1]
     if str(_runpod) not in sys.path:
         sys.path.insert(0, str(_runpod))
 
-# NOW import (after DEBUG is set)
+# Load config/settings.env first so DEBUG=1 there is respected
+from stack import settings as _stack_settings  # noqa: F401 – loads config/settings.env
+os.environ["VLLM_URL"] = _args.vllm_url
+os.environ["VISION_API_URL"] = _args.vision_url
+# Debug: from -d/--debug or from config/settings.env DEBUG=1
+os.environ["DEBUG"] = "1" if (_args.debug or os.getenv("DEBUG", "0") == "1") else "0"
+
 from stack import config
 from stack.paths import root
 from stack.settings import PROXY_HOST, PROXY_PORT, VLLM_URL, VISION_URL
@@ -67,6 +68,11 @@ def main() -> int:
             os.environ["MODEL_TOOL_FORMAT"] = model_info.get("tool_format", "openai")
         except Exception as e:
             print(f"⚠️  Warning: Could not load model config: {e}")
+    # When CONTEXT_MODE=extended but no model selected (or model didn't set it), use 128K so proxy matches backend
+    if config.get_context_mode() == "extended" and not os.environ.get("MODEL_EXTENDED_CONTEXT"):
+        default_extended = os.getenv("MODEL_EXTENDED_CONTEXT_DEFAULT", "131072")
+        os.environ["MODEL_EXTENDED_CONTEXT"] = default_extended
+        os.environ["MODEL_MAX_CONTEXT"] = default_extended
     
     # Setup logging
     log_dir = root() / "logs"
@@ -84,11 +90,12 @@ def main() -> int:
     print(f"   vLLM:       {args.vllm_url}")
     print(f"   Vision:     {args.vision_url}")
     print(f"   Context:    {effective_ctx} tokens (threshold {threshold})")
-    print(f"   Debug:      {'On' if args.debug else 'Off'}")
+    debug_on = os.getenv("DEBUG", "0") == "1"
+    print(f"   Debug:      {'On' if debug_on else 'Off'} (-d or DEBUG=1 in config/settings.env)")
     print(f"   Logs:       {log_file}\n")
     
-    # Setup logging
-    if not args.debug:
+    # Setup logging: Tee to console + file when debug so [DEBUG] flow/messages go to log
+    if not debug_on:
         # Production: logs only to file
         sys.stdout.flush()
         sys.stderr.flush()
@@ -97,8 +104,8 @@ def main() -> int:
         os.dup2(log_fd.fileno(), sys.stdout.fileno())
         os.dup2(log_fd.fileno(), sys.stderr.fileno())
     else:
-        # Debug: tee output to both console and file
-        print("   Debug mode: Output shown in console + log file\n")
+        # Debug: tee output to both console and file (full request/response flow in log)
+        print("   Debug mode: Output shown in console + log file (request/response flow)\n")
         
         class TeeOutput:
             """Write to both console and file."""
@@ -128,8 +135,8 @@ def main() -> int:
         "proxy.server:app",
         host=args.host,
         port=int(args.port),
-        log_level="debug" if args.debug else "info",
-        access_log=args.debug
+        log_level="debug" if debug_on else "info",
+        access_log=debug_on
     )
     
     return 0

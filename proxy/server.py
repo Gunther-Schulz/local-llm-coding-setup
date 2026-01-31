@@ -13,6 +13,8 @@ from stack.settings import (
     MAX_PROMPT_TOKENS,
     get_effective_context_limit,
     COMPRESSION_THRESHOLD,
+    COMPRESSION_TRIGGER_MESSAGES,
+    CONTEXT_WINDOW_SIZE,
     SAFETY_MARGIN
 )
 from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
@@ -87,13 +89,18 @@ async def chat_completions_v1(request: Request):
 
 async def handle_chat_completions(request: ChatCompletionRequest):
     """Main handler for chat completions."""
-    # Convert to dicts
+    # Convert to dicts, preserving tool_calls and tool_call_id for multi-turn tool use
     incoming_messages = []
     for msg in request.messages:
         msg_dict = msg.model_dump()
-        # Remove None values that might cause validation issues
+        # Keep all fields; only drop explicit None for optional content (use "" for backend)
+        if msg_dict.get("content") is None:
+            msg_dict["content"] = ""
         msg_dict = {k: v for k, v in msg_dict.items() if v is not None}
         incoming_messages.append(msg_dict)
+    if DEBUG and any(m.get("tool_calls") or m.get("tool_call_id") for m in incoming_messages):
+        print(f"[DEBUG] Request has tool context: {sum(1 for m in incoming_messages if m.get('tool_calls'))} assistant tool_calls, "
+              f"{sum(1 for m in incoming_messages if m.get('tool_call_id'))} tool result(s)")
     
     # Check for images and process with vision API if present
     if has_image_content(incoming_messages):
@@ -144,15 +151,15 @@ async def handle_chat_completions(request: ChatCompletionRequest):
     conversation_id = get_conversation_id(incoming_messages)
     final_messages = incoming_messages
     
-    # Trigger at 30 messages OR 20K tokens
-    if len(incoming_messages) > 30 or prompt_tokens > COMPRESSION_THRESHOLD:
+    # Trigger when message count or token count exceeds threshold
+    if len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES or prompt_tokens > COMPRESSION_THRESHOLD:
         if DEBUG:
             print(f"[DEBUG] Applying context management (messages: {len(incoming_messages)}, tokens: {prompt_tokens})")
         
         final_messages = await manage_context(
             incoming_messages,
             conversation_id,
-            max_messages=20
+            max_messages=CONTEXT_WINDOW_SIZE
         )
         
         prompt_tokens = total_tokens(final_messages, request.tools)
@@ -175,15 +182,28 @@ async def handle_chat_completions(request: ChatCompletionRequest):
         requested = max_completion_allowed
     
     effective_max_tokens = requested if requested else min(max_completion_allowed, 2048)
+    # Never send max_tokens < 64; backends may reject 1 and user gets no useful response
+    MIN_MAX_TOKENS = 64
+    if effective_max_tokens < MIN_MAX_TOKENS:
+        if max_completion_allowed < MIN_MAX_TOKENS:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Prompt too long: {prompt_tokens} tokens exceeds backend context ({BACKEND_CTX_LIMIT}). "
+                "Shorten the conversation or use fewer tool results."
+            )
+        effective_max_tokens = min(MIN_MAX_TOKENS, max_completion_allowed)
     
-    # Clean messages: ensure only valid fields, remove None values
+    # Clean messages: ensure only valid fields; match backend expectations for tool turns
     cleaned_messages = []
     for msg in final_messages:
-        cleaned = {
-            "role": msg.get("role"),
-            "content": msg.get("content", "")
-        }
-        # Add optional fields only if present
+        role = msg.get("role")
+        content = msg.get("content", "")
+        cleaned = {"role": role}
+        # Assistant with only tool_calls: omit content so backend sees tool turn (llama-server can mis-handle content: "")
+        if role == "assistant" and msg.get("tool_calls") and (content is None or content == ""):
+            pass  # no content key
+        else:
+            cleaned["content"] = content if content is not None else ""
         if msg.get("tool_calls"):
             cleaned["tool_calls"] = msg["tool_calls"]
         if msg.get("tool_call_id"):
@@ -230,7 +250,14 @@ async def handle_chat_completions(request: ChatCompletionRequest):
                 stream=True,
                 timeout=180.0
             )
-            sync_response.raise_for_status()
+            if not sync_response.ok:
+                body = sync_response.text
+                print(f"[ERROR] Backend HTTP error (streaming): {sync_response.status_code}")
+                print(f"[ERROR] Backend response: {body[:2000]}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Backend error ({sync_response.status_code}): {body[:500]}"
+                )
             
             return StreamingResponse(
                 stream_with_tool_transform(sync_response, request.model),

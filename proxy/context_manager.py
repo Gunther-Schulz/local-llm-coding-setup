@@ -2,7 +2,7 @@
 from typing import List, Dict, Any
 import httpx
 
-from stack.settings import DEBUG, BACKEND_URL
+from stack.settings import DEBUG, BACKEND_URL, TOOL_RESPONSE_MAX_VERBATIM, TOOL_RESPONSE_PREVIEW_CHARS
 
 
 # Store old conversation history for retrieval
@@ -79,9 +79,9 @@ def condense_large_tool_response(msg: Dict) -> Dict:
     else:
         text_content = str(content)
     
-    # If tool response is large (>2000 chars), condense it
-    if len(text_content) > 2000:
-        preview = text_content[:500] + f"\n\n[... {len(text_content) - 500} more characters omitted ...]"
+    # If tool response is large, condense to preview only
+    if len(text_content) > TOOL_RESPONSE_MAX_VERBATIM:
+        preview = text_content[:TOOL_RESPONSE_PREVIEW_CHARS] + f"\n\n[... {len(text_content) - TOOL_RESPONSE_PREVIEW_CHARS} more characters omitted ...]"
         
         condensed = msg.copy()
         if isinstance(content, list):
