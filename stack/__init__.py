@@ -1,1 +1,5 @@
-# Shared config, models, and download for the LLM stack (vLLM, llama, proxy).
+"""Stack module initialization."""
+from .config_manager import ConfigManager
+
+# Create a global instance for backward compatibility
+config_manager = ConfigManager()
