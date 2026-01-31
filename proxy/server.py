@@ -18,7 +18,7 @@ from stack.settings import (
     SAFETY_MARGIN
 )
 from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
-from proxy.context_manager import manage_context
+from proxy.context_manager import manage_context, condense_large_tool_response
 from proxy.vision_router import (
     has_image_content, extract_images_and_text,
     query_vision_api, prepare_multimodal_request
@@ -142,6 +142,10 @@ async def handle_chat_completions(request: ChatCompletionRequest):
                         text_parts.append(item.get("text", ""))
                 incoming_messages[i]["content"] = " ".join(text_parts)
     
+    # Condense large tool responses on every request (within-prompt compression)
+    # so single-request "investigate codebase" loops don't blow context before thresholds.
+    incoming_messages = [condense_large_tool_response(m) for m in incoming_messages]
+    
     # Calculate token budget (uses MODEL_MAX_CONTEXT or MODEL_EXTENDED_CONTEXT)
     BACKEND_CTX_LIMIT = get_effective_context_limit()
     prompt_tokens = total_tokens(incoming_messages, request.tools)
@@ -149,7 +153,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
     if DEBUG:
         print(f"[DEBUG] Incoming: {len(incoming_messages)} messages, ~{prompt_tokens} tokens")
     
-    # Apply Cursor-style context management if conversation is large
+    # If conversation is large (message or token threshold), summarize old + sliding window
     conversation_id = get_conversation_id(incoming_messages)
     final_messages = incoming_messages
     

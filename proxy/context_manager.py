@@ -1,4 +1,15 @@
-"""Context management using Cursor's strategy: summarization + sliding window."""
+"""Context management: summarization + sliding window + condense large tool responses.
+
+Cursor (docs/blog) does two things we align with and one we cannot:
+- Summarization when context fills: Cursor auto-summarizes and gives the agent chat history
+  as a file so it can search for lost details. We summarize old messages and keep a sliding
+  window of recent ones; we do not expose history-as-file (proxy has no client filesystem).
+- Long tool responses: Cursor writes them to a file and lets the agent Read/tail on demand,
+  avoiding truncation. We cannot write to the client FS, so we condense to a preview
+  (TOOL_RESPONSE_MAX_VERBATIM / TOOL_RESPONSE_PREVIEW_CHARS). Optional future: proxy could
+  store full results by tool_call_id and expose GET /v1/tool-results/{id} for clients that
+  add a "fetch full result" tool.
+"""
 from typing import List, Dict, Any
 import httpx
 
@@ -103,11 +114,10 @@ async def manage_context(
     max_messages: int = 20
 ) -> List[Dict]:
     """
-    Manage context using Cursor's strategy:
-    1. Keep last N message exchanges (sliding window)
-    2. Summarize older messages
-    3. Archive old messages for retrieval
-    4. Condense large tool responses
+    When conversation is large (message or token threshold): keep last N messages
+    (sliding window), summarize older ones into one user message, condense large
+    tool responses in the kept window. Archives old messages in memory per
+    conversation_id (for possible future retrieval).
     """
     if len(messages) <= max_messages:
         # Small conversation, no management needed
