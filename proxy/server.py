@@ -81,6 +81,8 @@ async def chat_completions_v1(request: Request):
         
         return result
     
+    except HTTPException:
+        raise  # Preserve 413, 502, 503 etc. – do not turn into 500
     except Exception as e:
         print(f"[ERROR] Request failed: {e}")
         print(f"[ERROR] {traceback.format_exc()}")

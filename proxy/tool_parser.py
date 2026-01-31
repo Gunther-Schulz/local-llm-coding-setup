@@ -1,10 +1,11 @@
 """Tool call parsing and transformation for Qwen models."""
 import json
+import os
 import re
 import uuid
 from typing import List, Dict, Optional
 
-from stack.settings import DEBUG, MODEL_TOOL_FORMAT
+from stack.settings import DEBUG
 
 
 def _extract_braced_json(s: str, start: int) -> tuple[Optional[str], int]:
@@ -92,11 +93,13 @@ def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
 
 
 def should_transform_tool_calls(vllm_sent: bool) -> bool:
-    """Check if we should transform tool calls based on model and vLLM behavior."""
+    """Check if we should transform tool calls based on model and vLLM behavior.
+    Reads MODEL_TOOL_FORMAT at call time so proxy launcher's env is respected."""
     if vllm_sent:
         return False  # vLLM already handled it
     
-    return MODEL_TOOL_FORMAT in ("qwen2.5", "qwen3", "auto")
+    fmt = os.getenv("MODEL_TOOL_FORMAT", "openai")
+    return fmt in ("qwen2.5", "qwen3", "auto")
 
 
 def transform_qwen_response(response_data: Dict) -> Dict:

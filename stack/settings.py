@@ -141,12 +141,12 @@ LOG_DIR = os.getenv("LOG_DIR", "logs")
 # ============================================================================
 
 def get_effective_context_limit() -> int:
-    """Get the effective context limit for the current model."""
-    # Check if extended context is enabled
-    extended_ctx = MODEL_EXTENDED_CONTEXT
+    """Get the effective context limit for the current model. Reads os.environ at call time
+    so proxy/llm launchers that set MODEL_EXTENDED_CONTEXT after importing settings are respected."""
+    extended_ctx = os.getenv("MODEL_EXTENDED_CONTEXT")
     if extended_ctx:
         return int(extended_ctx)
-    return MODEL_MAX_CONTEXT
+    return int(os.getenv("MODEL_MAX_CONTEXT", str(MODEL_MAX_CONTEXT)))
 
 
 def get_max_completion_tokens(prompt_tokens: int) -> int:
