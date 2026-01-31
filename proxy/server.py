@@ -212,7 +212,7 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         sliding_trigger = (
             prompt_tokens > COMPRESSION_THRESHOLD
             if COMPRESSION_ONLY_WHEN_NEAR_LIMIT
-            else (len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES or prompt_tokens > COMPRESSION_THRESHOLD)
+            else prompt_tokens > COMPRESSION_THRESHOLD
         )
     if sliding_trigger:
         sliding_window_active = True
