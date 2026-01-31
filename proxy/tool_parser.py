@@ -30,19 +30,60 @@ def _extract_braced_json(s: str, start: int) -> tuple[Optional[str], int]:
     return None, start
 
 
+def _make_tool_call(name: str, arguments: dict) -> Dict:
+    """Build OpenAI-compatible tool call dict."""
+    return {
+        "id": f"call_{uuid.uuid4().hex[:24]}",
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": json.dumps(arguments) if isinstance(arguments, dict) else json.dumps({})
+        }
+    }
+
+
 def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
     """
-    Parse Qwen tool calls from XML or JSON-in-markdown format.
+    Parse tool calls from XML or JSON format.
     
     Formats supported:
-    1. XML: <function>{"name":"...", "arguments":{...}}</function>
-    2. Markdown: ```json\n{"name":"...", "arguments":{...}}\n```
+    1. Cursor-style: <read><file>path</file></read>, <function=Read><file>path</file></function>
+    2. Qwen XML: <function>{"name":"...", "arguments":{...}}</function>
+    3. Markdown: ```json\n{"name":"...", "arguments":{...}}\n```
     
     Returns OpenAI-compatible tool_calls array.
     """
     tool_calls = []
-    
-    # Pattern 1: XML tags (support nested braces in arguments)
+    seen: set = set()  # (name, args_str) to avoid duplicates
+
+    # Cursor-style: <read><file>path</file></read> or <tool_name><file>path</file></tool_name>
+    for m in re.finditer(r"<(\w+)>\s*<file>(.*?)</file>\s*</\1>", content, re.DOTALL | re.IGNORECASE):
+        tool_name = m.group(1).strip()
+        path = m.group(2).strip()
+        if not path or not tool_name:
+            continue
+        name = tool_name[0].upper() + tool_name[1:].lower() if tool_name else ""
+        key = (name, path)
+        if key not in seen:
+            seen.add(key)
+            tool_calls.append(_make_tool_call(name, {"path": path}))
+
+    # <function=Read> or <function name="Read"> with <file>path</file> inside
+    for m in re.finditer(r"<function\s*=?\s*(\w+)>(.*?)</function>", content, re.DOTALL | re.IGNORECASE):
+        name = m.group(1).strip()
+        if not name:
+            continue
+        name = name[0].upper() + name[1:].lower()
+        inner = m.group(2)
+        file_m = re.search(r"<file>(.*?)</file>", inner, re.DOTALL | re.IGNORECASE)
+        if file_m:
+            path = file_m.group(1).strip()
+            key = (name, path)
+            if key not in seen:
+                seen.add(key)
+                tool_calls.append(_make_tool_call(name, {"path": path}))
+
+    # Qwen XML: <function>{"name":"...", "arguments":{...}}</function>
     for tag in ("function", "tool_call"):
         pattern = re.compile(
             rf"<{tag}\s*>(.*?)</{tag}>",
@@ -55,15 +96,12 @@ def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
                 continue
             try:
                 tool_data = json.loads(json_str)
-                tool_call = {
-                    "id": f"call_{uuid.uuid4().hex[:24]}",
-                    "type": "function",
-                    "function": {
-                        "name": tool_data.get("name", ""),
-                        "arguments": json.dumps(tool_data.get("arguments", {}))
-                    }
-                }
-                tool_calls.append(tool_call)
+                name = tool_data.get("name", "")
+                args = tool_data.get("arguments", {})
+                key = (name, json.dumps(args, sort_keys=True))
+                if key not in seen:
+                    seen.add(key)
+                    tool_calls.append(_make_tool_call(name, args))
             except json.JSONDecodeError:
                 if DEBUG:
                     print(f"[DEBUG] Failed to parse XML tool call: {json_str[:100]}")
@@ -75,16 +113,13 @@ def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
             continue
         try:
             tool_data = json.loads(json_str)
-            if "name" in tool_data:  # Looks like a tool call
-                tool_call = {
-                    "id": f"call_{uuid.uuid4().hex[:24]}",
-                    "type": "function",
-                    "function": {
-                        "name": tool_data.get("name", ""),
-                        "arguments": json.dumps(tool_data.get("arguments", {}))
-                    }
-                }
-                tool_calls.append(tool_call)
+            if "name" in tool_data:
+                name = tool_data.get("name", "")
+                args = tool_data.get("arguments", {})
+                key = (name, json.dumps(args, sort_keys=True))
+                if key not in seen:
+                    seen.add(key)
+                    tool_calls.append(_make_tool_call(name, args))
         except json.JSONDecodeError:
             if DEBUG:
                 print(f"[DEBUG] Failed to parse markdown tool call: {json_str[:100]}")

@@ -9,11 +9,25 @@ Cursor (docs/blog) does two things we align with and one we cannot:
   (TOOL_RESPONSE_MAX_VERBATIM / TOOL_RESPONSE_PREVIEW_CHARS). Optional future: proxy could
   store full results by tool_call_id and expose GET /v1/tool-results/{id} for clients that
   add a "fetch full result" tool.
+  Instruction docs (e.g. CLIPPY_MKII.md) and code files (e.g. proxy/*.py) can be excluded via
+  TOOL_RESPONSE_NO_CONDENSE_PATHS so the model sees full content in one Read instead of a short
+  preview and many follow-up Reads.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import fnmatch
+import json
+import os
+import time
 import httpx
 
-from stack.settings import DEBUG, BACKEND_URL, TOOL_RESPONSE_MAX_VERBATIM, TOOL_RESPONSE_PREVIEW_CHARS
+from stack.settings import (
+    DEBUG,
+    BACKEND_URL,
+    TOOL_RESPONSE_MAX_VERBATIM,
+    TOOL_RESPONSE_PREVIEW_CHARS,
+    TOOL_RESPONSE_NO_CONDENSE_PATHS,
+    PRESERVE_FIRST_USER_IN_SUMMARY,
+)
 
 
 # Store old conversation history for retrieval
@@ -79,33 +93,95 @@ def _extract_content_preview(msg: Dict, max_chars: int = 200) -> str:
     return text
 
 
-def condense_large_tool_response(msg: Dict) -> Dict:
-    """Condense large tool responses - show preview, keep full text retrievable."""
+def _build_tool_call_id_to_path(messages: List[Dict]) -> Dict[str, str]:
+    """Build map tool_call_id -> file path from assistant messages' tool_calls."""
+    id_to_path: Dict[str, str] = {}
+    for msg in messages:
+        if msg.get("role") != "assistant" or not msg.get("tool_calls"):
+            continue
+        for tc in msg["tool_calls"]:
+            tid = tc.get("id")
+            if not tid:
+                continue
+            fn = tc.get("function")
+            if not isinstance(fn, dict):
+                continue
+            args = fn.get("arguments")
+            if not args:
+                continue
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    continue
+            if not isinstance(args, dict):
+                continue
+            path = args.get("path") or args.get("file_path") or args.get("filename") or args.get("file")
+            if path:
+                id_to_path[tid] = str(path)
+    return id_to_path
+
+
+def _path_matches_no_condense(path: str, patterns: List[str]) -> bool:
+    """True if path (or its basename) matches any fnmatch pattern in patterns."""
+    base = os.path.basename(path)
+    for p in patterns:
+        if fnmatch.fnmatch(path, p) or fnmatch.fnmatch(base, p):
+            return True
+    return False
+
+
+def condense_large_tool_response(msg: Dict, skip_condense: bool = False) -> Dict:
+    """Condense large tool responses - show preview, keep full text retrievable.
+    If skip_condense is True (e.g. instruction doc), return msg unchanged."""
     if msg.get("role") != "tool":
         return msg
-    
+    if skip_condense:
+        return msg
+
     content = msg.get("content", "")
     if isinstance(content, list) and len(content) > 0:
         text_content = content[0].get("text", "") if isinstance(content[0], dict) else str(content[0])
     else:
         text_content = str(content)
-    
+
     # If tool response is large, condense to preview only
     if len(text_content) > TOOL_RESPONSE_MAX_VERBATIM:
         preview = text_content[:TOOL_RESPONSE_PREVIEW_CHARS] + f"\n\n[... {len(text_content) - TOOL_RESPONSE_PREVIEW_CHARS} more characters omitted ...]"
-        
+
         condensed = msg.copy()
         if isinstance(content, list):
             condensed["content"] = [{"type": "text", "text": preview}]
         else:
             condensed["content"] = preview
-        
-        # Keep reference to full content for retrieval if needed
+
         condensed["_full_content_length"] = len(text_content)
-        
         return condensed
-    
+
     return msg
+
+
+def condense_tool_responses_with_context(
+    messages: List[Dict],
+    no_condense_patterns: Optional[List[str]] = None,
+) -> List[Dict]:
+    """Condense large tool responses, but skip condensing for paths matching no_condense_patterns
+    (e.g. instruction docs like CLIPPY_MKII.md). Patterns use fnmatch (*CLIPPY*.md)."""
+    if no_condense_patterns is None:
+        no_condense_patterns = TOOL_RESPONSE_NO_CONDENSE_PATHS
+    id_to_path = _build_tool_call_id_to_path(messages)
+    result = []
+    for msg in messages:
+        if msg.get("role") != "tool":
+            result.append(msg)
+            continue
+        tid = msg.get("tool_call_id")
+        path = id_to_path.get(tid) if tid else None
+        skip = bool(path and _path_matches_no_condense(path, no_condense_patterns))
+        if DEBUG and skip:
+            print(f"[DEBUG] No condense for tool result (path matches): {path}")
+        result.append(condense_large_tool_response(msg, skip_condense=skip))
+    return result
 
 
 async def manage_context(
@@ -146,20 +222,31 @@ async def manage_context(
     
     if DEBUG:
         print(f"[DEBUG] Archived {len(old_messages)} messages (total archive: {len(_conversation_archives[conversation_id])})")
-    
+
     # Summarize old context
+    _sum_start = time.perf_counter()
     summary = await summarize_conversation(old_messages)
-    
     if DEBUG:
+        print(f"[DEBUG] Summarization took {time.perf_counter() - _sum_start:.2f}s")
         print(f"[DEBUG] Generated summary: {summary[:100]}...")
     
+    # Prepend first user message so task context (e.g. "use CLIPPY") stays in context
+    summary_parts = []
+    if PRESERVE_FIRST_USER_IN_SUMMARY:
+        first_user = next((m for m in old_messages if m.get("role") == "user"), None)
+        if first_user:
+            first_content = _extract_content_preview(first_user, max_chars=2000)
+            summary_parts.append(f"[Initial user request]:\n{first_content}\n")
+    summary_parts.append(f"[Previous conversation summary]:\n{summary}\n\n[Continuing conversation...]")
+    summary_content = "\n".join(summary_parts)
+
     summary_message = {
         "role": "user",
-        "content": f"[Previous conversation summary]:\n{summary}\n\n[Continuing conversation...]"
+        "content": summary_content
     }
-    
-    # Condense large tool responses in recent messages
-    condensed_recent = [condense_large_tool_response(msg) for msg in recent_messages]
+
+    # Condense large tool responses in recent messages (instruction docs bypassed via patterns)
+    condensed_recent = condense_tool_responses_with_context(recent_messages)
     
     # Build final context
     final_messages = []

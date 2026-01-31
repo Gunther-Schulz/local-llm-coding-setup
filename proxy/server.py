@@ -1,10 +1,12 @@
 """Compression proxy server with vision routing and tool call transformation."""
 import json
+import time
 import traceback
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from typing import Dict, Any, Optional
 
 from proxy.models import ChatCompletionRequest
 from stack.settings import (
@@ -12,13 +14,16 @@ from stack.settings import (
     BACKEND_URL,
     MAX_PROMPT_TOKENS,
     get_effective_context_limit,
+    COMPRESSION_ENABLED,
     COMPRESSION_THRESHOLD,
     COMPRESSION_TRIGGER_MESSAGES,
     CONTEXT_WINDOW_SIZE,
-    SAFETY_MARGIN
+    SAFETY_MARGIN,
+    COMPRESSION_ONLY_WHEN_NEAR_LIMIT,
+    COMPRESSION_NEAR_LIMIT_FRACTION,
 )
 from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
-from proxy.context_manager import manage_context, condense_large_tool_response
+from proxy.context_manager import manage_context, condense_tool_responses_with_context
 from proxy.vision_router import (
     has_image_content, extract_images_and_text,
     query_vision_api, prepare_multimodal_request
@@ -39,6 +44,15 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_log():
+    """Log proxy config when DEBUG so logs show what is active."""
+    if DEBUG:
+        ctx = get_effective_context_limit()
+        comp = "off" if not COMPRESSION_ENABLED else ("near_limit" if COMPRESSION_ONLY_WHEN_NEAR_LIMIT else "on")
+        print(f"[DEBUG] Proxy config: backend={BACKEND_URL}, context_limit={ctx}, compression={comp}")
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint."""
@@ -46,14 +60,18 @@ async def health():
 
 
 @app.get("/v1/models")
-async def list_models():
-    """Forward models list from backend."""
+async def list_models(request: Request):
+    """Forward models list from backend as-is."""
+    client_ip = request.client.host if request.client else "unknown"
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{BACKEND_URL}/v1/models")
-            return response.json()
+            data = response.json()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Backend error: {str(e)}")
+    if "data" in data and isinstance(data["data"], list):
+        print(f"[INFO] GET /v1/models from {client_ip}: {len(data['data'])} model(s)")
+    return data
 
 
 @app.post("/v1/chat/completions")
@@ -91,6 +109,7 @@ async def chat_completions_v1(request: Request):
 
 async def handle_chat_completions(request: ChatCompletionRequest):
     """Main handler for chat completions."""
+    _t0 = time.perf_counter()
     # Convert to dicts, preserving tool_calls and tool_call_id for multi-turn tool use
     incoming_messages = []
     for msg in request.messages:
@@ -108,11 +127,14 @@ async def handle_chat_completions(request: ChatCompletionRequest):
     if has_image_content(incoming_messages):
         if DEBUG:
             print("[DEBUG] Image detected, routing to vision API")
-        
+        _t_vision = time.perf_counter()
+
         has_imgs, text_msgs, image_msgs = extract_images_and_text(incoming_messages)
-        
-        # Query vision API for image description
+
+        # Query vision API for image description (this call can take 10s–2min; timeout 120s)
         vision_result = await query_vision_api(image_msgs, max_tokens=512)
+        if DEBUG:
+            print(f"[DEBUG] Vision API took {round((time.perf_counter() - _t_vision) * 1000)} ms")
         
         # Check if vision API returned an error
         if "error" in vision_result:
@@ -142,63 +164,99 @@ async def handle_chat_completions(request: ChatCompletionRequest):
                         text_parts.append(item.get("text", ""))
                 incoming_messages[i]["content"] = " ".join(text_parts)
     
-    # Condense large tool responses on every request (within-prompt compression)
-    # so single-request "investigate codebase" loops don't blow context before thresholds.
-    incoming_messages = [condense_large_tool_response(m) for m in incoming_messages]
-    
-    # Calculate token budget (uses MODEL_MAX_CONTEXT or MODEL_EXTENDED_CONTEXT)
+    # Condense + sliding window only when COMPRESSION_ENABLED
+    tokens_before_condense = total_tokens(incoming_messages, request.tools)
     BACKEND_CTX_LIMIT = get_effective_context_limit()
-    prompt_tokens = total_tokens(incoming_messages, request.tools)
-    
-    if DEBUG:
-        print(f"[DEBUG] Incoming: {len(incoming_messages)} messages, ~{prompt_tokens} tokens")
-    
-    # If conversation is large (message or token threshold), summarize old + sliding window
+    if COMPRESSION_ENABLED:
+        near_limit_threshold = int(BACKEND_CTX_LIMIT * COMPRESSION_NEAR_LIMIT_FRACTION)
+        skip_condense = (
+            COMPRESSION_ONLY_WHEN_NEAR_LIMIT
+            and tokens_before_condense <= near_limit_threshold
+        )
+        if not skip_condense:
+            incoming_messages = condense_tool_responses_with_context(incoming_messages)
+        elif DEBUG:
+            print(f"[DEBUG] No tool condense (under {near_limit_threshold} tokens, near_limit mode)")
+    else:
+        if DEBUG:
+            print(f"[DEBUG] Compression disabled, pass-through")
+    tool_responses_condensed = sum(1 for m in incoming_messages if m.get("_full_content_length") is not None)
+    tokens_after_condense = total_tokens(incoming_messages, request.tools)
+    prompt_tokens = tokens_after_condense
+
     conversation_id = get_conversation_id(incoming_messages)
     final_messages = incoming_messages
-    
-    # Trigger when message count or token count exceeds threshold
-    if len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES or prompt_tokens > COMPRESSION_THRESHOLD:
-        if DEBUG:
-            print(f"[DEBUG] Applying context management (messages: {len(incoming_messages)}, tokens: {prompt_tokens})")
-        
+    sliding_window_active = False
+    trigger_reason = None
+    messages_summarized = 0
+    messages_kept = 0
+
+    sliding_trigger = False
+    if COMPRESSION_ENABLED:
+        sliding_trigger = (
+            prompt_tokens > COMPRESSION_THRESHOLD
+            if COMPRESSION_ONLY_WHEN_NEAR_LIMIT
+            else (len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES or prompt_tokens > COMPRESSION_THRESHOLD)
+        )
+    if sliding_trigger:
+        sliding_window_active = True
+        if COMPRESSION_ONLY_WHEN_NEAR_LIMIT:
+            trigger_reason = f"tokens>{COMPRESSION_THRESHOLD} (near_limit mode)"
+        elif len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES and prompt_tokens > COMPRESSION_THRESHOLD:
+            trigger_reason = f"messages>{COMPRESSION_TRIGGER_MESSAGES} and tokens>{COMPRESSION_THRESHOLD}"
+        elif len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES:
+            trigger_reason = f"messages>{COMPRESSION_TRIGGER_MESSAGES}"
+        else:
+            trigger_reason = f"tokens>{COMPRESSION_THRESHOLD}"
+        conv_count = len(incoming_messages) - (1 if incoming_messages and incoming_messages[0].get("role") == "system" else 0)
+        messages_summarized = max(0, conv_count - CONTEXT_WINDOW_SIZE)
+        messages_kept = CONTEXT_WINDOW_SIZE
+
         final_messages = await manage_context(
             incoming_messages,
             conversation_id,
             max_messages=CONTEXT_WINDOW_SIZE
         )
-        
         prompt_tokens = total_tokens(final_messages, request.tools)
-        
-        if DEBUG:
-            print(f"[DEBUG] After context management: {len(final_messages)} messages, ~{prompt_tokens} tokens")
-    
+
     max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
-    
-    if DEBUG:
-        print(f"[DEBUG] Final: {len(final_messages)} messages, {prompt_tokens} prompt tokens, {max_completion_allowed} max completion")
-    
+
     # Determine effective max_tokens - be more conservative
     requested = request.max_tokens or request.max_completion_tokens
-    
-    # Cap requested tokens to what's actually available
     if requested and requested > max_completion_allowed:
         if DEBUG:
             print(f"[DEBUG] Requested {requested} tokens, but only {max_completion_allowed} available - capping")
         requested = max_completion_allowed
-    
     effective_max_tokens = requested if requested else min(max_completion_allowed, 2048)
-    # Never send max_tokens < 64; backends may reject 1 and user gets no useful response
     MIN_MAX_TOKENS = 64
     if effective_max_tokens < MIN_MAX_TOKENS:
         if max_completion_allowed < MIN_MAX_TOKENS:
+            if DEBUG:
+                print(f"[DEBUG] Rejecting: prompt too long ({prompt_tokens} > {BACKEND_CTX_LIMIT})")
             raise HTTPException(
                 status_code=413,
                 detail=f"Prompt too long: {prompt_tokens} tokens exceeds backend context ({BACKEND_CTX_LIMIT}). "
                 "Shorten the conversation or use fewer tool results."
             )
         effective_max_tokens = min(MIN_MAX_TOKENS, max_completion_allowed)
-    
+
+    if DEBUG:
+        elapsed_ms = round((time.perf_counter() - _t0) * 1000)
+        conv_id_short = (conversation_id[:12] + "..") if len(conversation_id) > 12 else conversation_id
+        print("[DEBUG] ---- context ----")
+        print(f"[DEBUG]   stream: {bool(request.stream)}, conversation_id: {conv_id_short}, elapsed_ms: {elapsed_ms}")
+        print(f"[DEBUG]   messages_in: {len(incoming_messages)}, tokens_in: {tokens_before_condense}")
+        print(f"[DEBUG]   tool_condense: {tool_responses_condensed} response(s) condensed, tokens_after_condense: {tokens_after_condense}")
+        if sliding_window_active:
+            print(f"[DEBUG]   sliding_window: yes (trigger: {trigger_reason})")
+            print(f"[DEBUG]   window_size: {CONTEXT_WINDOW_SIZE}, messages_summarized: {messages_summarized}, messages_kept: {messages_kept}")
+            print(f"[DEBUG]   messages_out: {len(final_messages)}, tokens_out: {prompt_tokens}")
+        else:
+            print(f"[DEBUG]   sliding_window: no")
+            print(f"[DEBUG]   messages_out: {len(final_messages)}, tokens_out: {prompt_tokens}")
+        print(f"[DEBUG]   context_limit: {BACKEND_CTX_LIMIT}, max_completion_available: {max_completion_allowed}, max_tokens_sent: {effective_max_tokens}")
+        print("[DEBUG] --------------------------")
+
     # Clean messages: ensure only valid fields; match backend expectations for tool turns
     cleaned_messages = []
     for msg in final_messages:
@@ -264,7 +322,8 @@ async def handle_chat_completions(request: ChatCompletionRequest):
                     status_code=502,
                     detail=f"Backend error ({sync_response.status_code}): {body[:500]}"
                 )
-            
+            if DEBUG:
+                print(f"[DEBUG] Request completed in {round((time.perf_counter() - _t0) * 1000)} ms (streaming)")
             return StreamingResponse(
                 stream_with_tool_transform(sync_response, request.model),
                 media_type="text/event-stream"
@@ -278,10 +337,11 @@ async def handle_chat_completions(request: ChatCompletionRequest):
                     headers={"Content-Type": "application/json"}
                 )
                 backend_response.raise_for_status()
-                
                 # Transform tool calls if needed
                 response_data = backend_response.json()
                 response_data = transform_qwen_response(response_data)
+                if DEBUG:
+                    print(f"[DEBUG] Request completed in {round((time.perf_counter() - _t0) * 1000)} ms (non-streaming)")
                 return response_data
     
     except httpx.HTTPStatusError as e:

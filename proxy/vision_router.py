@@ -1,4 +1,9 @@
-"""Vision detection and routing logic."""
+"""Vision detection and routing logic.
+
+Vision latency: image analysis is done by the vision server (llama-server with a vision model).
+query_vision_api() can take 10s–2min depending on image size and model; timeout is 120s.
+Slowness with vision_router is almost always this API call, not proxy compression.
+"""
 import hashlib
 import httpx
 from typing import List, Dict, Any, Tuple
