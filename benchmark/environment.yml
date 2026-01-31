@@ -1,0 +1,10 @@
+# Conda env for Hardware Corner-style long-context benchmark (llama.cpp + CUDA)
+name: benchmark
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - cmake
+  - ninja
+  - pip
