@@ -1,5 +1,16 @@
 # Activate project env: conda "vLLM" or .venv/venv. Source after ROOT is set.
 # Used by run/vllm.sh and run/select_model.sh.
+#
+# CUDA: FlashInfer (used by vLLM) looks for nvcc via CUDA_HOME. On CachyOS/Arch
+# the toolkit is in /opt/cuda; on many others it's /usr/local/cuda.
+if [ -z "${CUDA_HOME:-}" ]; then
+  if [ -x /opt/cuda/bin/nvcc ]; then
+    export CUDA_HOME=/opt/cuda
+  elif [ -x /usr/local/cuda/bin/nvcc ]; then
+    export CUDA_HOME=/usr/local/cuda
+  fi
+fi
+[ -n "${CUDA_HOME:-}" ] && [ -d "$CUDA_HOME/bin" ] && export PATH="${CUDA_HOME}/bin:${PATH}"
 
 _conda_sh=""
 for d in "$ROOT/miniconda3" "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/.miniconda3" "/opt/miniconda3" "/workspace/miniconda3"; do

@@ -52,7 +52,8 @@ def main() -> int:
         cleanup_vision()
         import time
         time.sleep(1)
-        print()
+        print("✓ Done. Vision server stopped.\n")
+        return 0
     
     # Get vision model (from arg or config)
     try:

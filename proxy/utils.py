@@ -2,24 +2,28 @@
 import hashlib
 from typing import List, Dict, Any, Union
 
-# Check if tiktoken is available
+# Load Qwen tokenizer once at module startup
+_TOKENIZER = None
+
 try:
-    import tiktoken
-    TIKTOKEN_AVAILABLE = True
-except ImportError:
-    TIKTOKEN_AVAILABLE = False
+    from transformers import AutoTokenizer
+    _TOKENIZER = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-14B-Instruct")
+    print("[INFO] Loaded Qwen tokenizer for accurate token counting")
+except Exception as e:
+    print(f"[WARNING] Could not load Qwen tokenizer: {e}")
+    print("[WARNING] Falling back to rough estimation (1 token ≈ 3 chars)")
 
 
 def estimate_tokens(text: str) -> int:
-    """Estimate token count - use tiktoken if available, else rough estimate."""
-    if TIKTOKEN_AVAILABLE:
+    """Estimate token count using Qwen's actual tokenizer."""
+    if _TOKENIZER is not None:
         try:
-            encoding = tiktoken.get_encoding("cl100k_base")
-            return len(encoding.encode(text))
-        except Exception:
-            pass
-    # Fallback: 1 token ≈ 4 characters
-    return len(text) // 4
+            return len(_TOKENIZER.encode(text, add_special_tokens=False))
+        except Exception as e:
+            print(f"[WARNING] Tokenizer error: {e}, using fallback")
+    
+    # Fallback: Qwen tokens are roughly 1 token per 3 characters
+    return len(text) // 3
 
 
 def extract_text_from_content(content: Union[str, List[Dict[str, Any]]]) -> str:

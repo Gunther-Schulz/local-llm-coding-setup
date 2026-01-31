@@ -28,14 +28,13 @@ def download_file(url: str, dest: str | Path, min_bytes: int = 0) -> bool:
     dest.parent.mkdir(parents=True, exist_ok=True)
     d, out = dest.parent, dest.name
 
-    # aria2c
+    # aria2c (show progress: no capture_output, allow summary so user sees %/speed)
     if _which("aria2c"):
         rc = subprocess.run(
             ["aria2c", "--continue=true", "--max-connection-per-server=16",
              "--min-split-size=1M", "--split=16", "--file-allocation=none",
-             "--console-log-level=warn", "--summary-interval=0",
              "-d", str(d), "-o", out, url],
-            capture_output=True, cwd=str(d),
+            cwd=str(d),
         )
         a2.unlink(missing_ok=True)
         if dest.exists():
@@ -51,7 +50,7 @@ def download_file(url: str, dest: str | Path, min_bytes: int = 0) -> bool:
             env.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
             rc = subprocess.run(
                 ["huggingface-cli", "download", repo, filename, "--local-dir", str(d), "--local-dir-use-symlinks", "False"],
-                env=env, capture_output=True,
+                env=env,
             )
             f = d / filename
             if f.exists() and f != dest:
@@ -61,13 +60,13 @@ def download_file(url: str, dest: str | Path, min_bytes: int = 0) -> bool:
 
     # wget
     if _which("wget"):
-        rc = subprocess.run(["wget", "-c", "-O", str(dest), url], capture_output=True)
+        rc = subprocess.run(["wget", "-c", "-O", str(dest), url])
         if dest.exists():
             return True
 
     # curl
     if _which("curl"):
-        rc = subprocess.run(["curl", "-L", "-C", "-", "-o", str(dest), url], capture_output=True)
+        rc = subprocess.run(["curl", "-L", "-C", "-", "-o", str(dest), "--progress-bar", url])
         if dest.exists():
             return True
 

@@ -91,20 +91,10 @@ SAFETY_MARGIN = int(os.getenv("SAFETY_MARGIN", "1536"))  # Reserve for response
 # Compression Settings
 # ============================================================================
 
-# Enable/disable compression
-COMPRESSION_ENABLED = os.getenv("COMPRESSION_ENABLED", "1") == "1"
-
-# When to trigger compression (in tokens)
-COMPRESSION_THRESHOLD = int(os.getenv("COMPRESSION_THRESHOLD", "20000"))
-
-# How many recent messages to keep uncompressed
-# Lower = more aggressive compression, longer conversations
-# Higher = better context quality, shorter conversations
-KEEP_RECENT_MESSAGES = int(os.getenv("KEEP_RECENT_MESSAGES", "2"))
-
-# Compression rate (0.0-1.0, lower = more aggressive)
-# 0.33 = keep 33% of tokens
-COMPRESSION_RATE = float(os.getenv("COMPRESSION_RATE", "0.33"))
+# Context management (Cursor-style: summarization + sliding window)
+COMPRESSION_THRESHOLD = int(os.getenv("COMPRESSION_THRESHOLD", "15000"))
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", "20"))
+MAX_ARCHIVE_MESSAGES = int(os.getenv("MAX_ARCHIVE_MESSAGES", "200"))
 
 
 # ============================================================================
@@ -165,10 +155,9 @@ def print_config_summary():
     print(f"Vision:      {VISION_URL}")
     print(f"Context:     {MODEL_MAX_CONTEXT} tokens")
     print(f"Max Prompt:  {MAX_PROMPT_TOKENS} tokens")
-    print(f"Compression: {'Enabled' if COMPRESSION_ENABLED else 'Disabled'}")
-    if COMPRESSION_ENABLED:
-        print(f"  Threshold:   {COMPRESSION_THRESHOLD} tokens")
-        print(f"  Keep Recent: {KEEP_RECENT_MESSAGES} messages")
-        print(f"  Rate:        {COMPRESSION_RATE} ({int(COMPRESSION_RATE*100)}%)")
+    print(f"Context Mgmt: Cursor-style (summarization + window)")
+    print(f"  Threshold:    {COMPRESSION_THRESHOLD} tokens (triggers at 30 msgs OR this)")
+    print(f"  Window Size:  {CONTEXT_WINDOW_SIZE} messages (keep recent)")
+    print(f"  Max Archive:  {MAX_ARCHIVE_MESSAGES} messages")
     print(f"Debug:       {'On' if DEBUG else 'Off'}")
     print("=" * 70)

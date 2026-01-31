@@ -1,4 +1,5 @@
 # Python deps. Single source of truth for all pieces. vLLM installed via setup/install.sh
+torch-c-dlpack-ext  # optional: silences vLLM EnvTensorAllocator warning, may help perf
 numpy>=1.24.0
 jinja2>=3.1.0
 fastapi[standard]>=0.115.0
@@ -6,12 +7,10 @@ uvicorn[standard]>=0.27.0
 pydantic>=2.12.0
 requests>=2.31.0
 httpx>=0.27.0
-tiktoken>=0.6.0
 huggingface_hub[cli]>=0.32.0
 hf_transfer>=0.1.5
 sse-starlette>=2.0.0
 anyio>=4.0.0
 
-# Compression proxy dependencies
-llmlingua>=0.2.1
-sentence-transformers>=2.3.0
+# Context management & tokenization
+transformers>=4.35.0

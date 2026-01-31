@@ -12,7 +12,6 @@ _ap.add_argument("--port", default="8002", help="Port to bind to")
 _ap.add_argument("--vllm-url", default="http://localhost:8000", help="vLLM backend URL")
 _ap.add_argument("--vision-url", default="http://localhost:8004", help="Vision API URL")
 _ap.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
-_ap.add_argument("--no-compression", action="store_true", help="Disable context compression")
 _ap.add_argument("-k", "--kill", action="store_true", help="Kill any existing proxy processes before starting")
 _args = _ap.parse_args()
 
@@ -20,7 +19,6 @@ _args = _ap.parse_args()
 os.environ["DEBUG"] = "1" if _args.debug else "0"
 os.environ["VLLM_URL"] = _args.vllm_url
 os.environ["VISION_API_URL"] = _args.vision_url
-os.environ["COMPRESSION_ENABLED"] = "0" if _args.no_compression else "1"
 
 # Ensure project root on path
 if __name__ == "__main__":
@@ -51,16 +49,21 @@ def main() -> int:
         cleanup_proxy()
         import time
         time.sleep(1)
-        print()
+        print("✓ Done. Proxy stopped.\n")
+        return 0
     
-    # Get model context from config (set by vLLM launcher)
+    # Get model context from config (same as vLLM launcher)
     model = config.get_current_model()
     if model:
         try:
             from stack import models
+            from stack.settings import get_effective_context_limit
             model_info = models.export_model_config(model)
-            # Export to environment for proxy to use
-            os.environ["MODEL_MAX_CONTEXT"] = str(os.environ.get("MODEL_MAX_CONTEXT", "32768"))
+            # Use extended (128K) only when context mode is "extended" (YaRN), else base (32K)
+            if config.get_context_mode() != "extended":
+                os.environ["MODEL_EXTENDED_CONTEXT"] = ""
+            effective_ctx = get_effective_context_limit()
+            os.environ["MODEL_MAX_CONTEXT"] = str(effective_ctx)
             os.environ["MODEL_TOOL_FORMAT"] = model_info.get("tool_format", "openai")
         except Exception as e:
             print(f"⚠️  Warning: Could not load model config: {e}")
@@ -74,11 +77,13 @@ def main() -> int:
     with open(log_file, "w") as f:
         f.write("")
     
+    effective_ctx = int(os.environ.get("MODEL_MAX_CONTEXT", "32768"))
+    threshold = os.environ.get("COMPRESSION_THRESHOLD", "80000")
     print(f"\n🚀 Starting Compression Proxy")
     print(f"   Listen:     {args.host}:{args.port}")
     print(f"   vLLM:       {args.vllm_url}")
     print(f"   Vision:     {args.vision_url}")
-    print(f"   Compress:   {'Enabled' if not args.no_compression else 'Disabled'}")
+    print(f"   Context:    {effective_ctx} tokens (threshold {threshold})")
     print(f"   Debug:      {'On' if args.debug else 'Off'}")
     print(f"   Logs:       {log_file}\n")
     

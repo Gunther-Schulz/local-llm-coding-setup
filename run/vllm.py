@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
 from stack import config, models
 from stack.paths import root
-from stack.settings import VLLM_HOST, VLLM_PORT, VLLM_DTYPE, VLLM_CPU_OFFLOAD_GB
+from stack.settings import VLLM_HOST, VLLM_PORT, VLLM_DTYPE, VLLM_CPU_OFFLOAD_GB, VLLM_CUDAGRAPH_MODE
 
 # Global process reference for signal handler
 _vllm_process = None
@@ -74,10 +74,12 @@ def main() -> int:
     
     ap = argparse.ArgumentParser(description="Start vLLM OpenAI-compatible server")
     ap.add_argument("-m", "--model", help="Override model key (from config/models.conf)")
-    ap.add_argument("-f", "--full-cudagraph", action="store_true",
-                    help="Use FULL_AND_PIECEWISE cudagraph (may freeze on RTX 5090+AMD)")
+    ap.add_argument("-p", "--piecewise", action="store_true",
+                    help="Use PIECEWISE cudagraph (default is FULL from config/settings.env)")
     ap.add_argument("-k", "--kill", action="store_true",
                     help="Kill any existing vLLM processes before starting")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Print full vLLM command and verify args (no server start)")
     args = ap.parse_args()
 
     # Kill existing vLLM processes if requested
@@ -85,7 +87,8 @@ def main() -> int:
         print("\n🛑 Killing existing vLLM processes...\n")
         cleanup_vllm()
         time.sleep(2)
-        print("✓ Cleanup complete\n")
+        print("✓ Done. vLLM server stopped.\n")
+        return 0
 
     model = args.model or config.get_current_model()
     if not model:
@@ -98,6 +101,7 @@ def main() -> int:
         print(f"\n{e}\nAvailable: " + ", ".join(x["model_key"] for x in models.load_models()) + "\n")
         return 1
 
+    # Extended context from config/settings.env (CONTEXT_MODE=extended) or env override EXTENDED_CONTEXT_MODE=1
     extended = int(os.environ.get("EXTENDED_CONTEXT_MODE", config.get_extended_context_mode()))
     base_max = int(os.environ["VLLM_MAX_LEN"])
     ext_ctx = os.environ.get("MODEL_EXTENDED_CONTEXT")
@@ -129,21 +133,31 @@ def main() -> int:
         "--tensor-parallel-size", "1",
     ]
 
-    if not args.full_cudagraph:
+    # Cudagraph: default from config/settings.env (FULL); -p forces PIECEWISE
+    use_full_cudagraph = not args.piecewise and (VLLM_CUDAGRAPH_MODE.upper() == "FULL")
+
+    if not use_full_cudagraph:
         argv += ["--compilation-config", '{"cudagraph_mode": "PIECEWISE"}']
-        print("Cudagraph: PIECEWISE (safe on 5090+AMD)\n")
+        print("Cudagraph: PIECEWISE\n")
     else:
-        print("🔴 Full cudagraph: may freeze on 5090+AMD during decode capture.\n")
+        print("Cudagraph: FULL\n")
 
     if SCALE_FACTOR is not None:
-        rope = f'{{"type":"yarn","factor":{SCALE_FACTOR},"original_max_position_embeddings":{base_max}}}'
+        # vLLM 0.14+ has no --rope-scaling; use --hf-overrides (rope_parameters) for YaRN
+        # No --cpu-offload-gb: RTX 5090 32GB fits Qwen3-30B MoE + 128K in VRAM (see Hardware Corner
+        # benchmarks). vLLM's CPU offload path hits "CPU tensor must be pinned" in 0.14.1.
+        hf_overrides = (
+            '{"rope_parameters":{'
+            f'"rope_type":"yarn","factor":{SCALE_FACTOR},'
+            f'"original_max_position_embeddings":{base_max}'
+            "}}"
+        )
         argv += [
-            "--rope-scaling", rope,
+            "--hf-overrides", hf_overrides,
             "--kv-cache-dtype", "fp8",
-            "--gpu-memory-utilization", "0.85",
-            "--cpu-offload-gb", cpu_offload,
+            "--gpu-memory-utilization", "0.90",
         ]
-        print(f"   CPU KV offload: {cpu_offload} GB\n")
+        print("   GPU-only (no CPU offload); reduce --max-model-len if OOM.\n")
 
     tool_parser = os.environ.get("VLLM_TOOL_PARSER", "none")
     if tool_parser != "none":
@@ -166,7 +180,29 @@ def main() -> int:
     # Use the installed vllm from site-packages. Do not set PYTHONPATH to vllm source.
 
     cmd = [sys.executable, "-m", "vllm.entrypoints.cli.main", "serve"] + argv
-    
+
+    if args.dry_run:
+        # Print full command (shell-quoted for copy-paste) and verify vLLM accepts args
+        from shlex import join as shlex_join
+        print("Full vLLM command (copy-paste to run manually):\n")
+        print(shlex_join(cmd))
+        print("\nVerifying vLLM accepts these arguments...")
+        proc = subprocess.Popen(
+            cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+        )
+        try:
+            _, stderr = proc.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            stderr = ""
+        if stderr and "unrecognized arguments" in stderr:
+            print("ERROR: vLLM rejected some arguments:\n")
+            print(stderr[:2000])
+            return 1
+        print("OK: vLLM accepted arguments (no 'unrecognized arguments' error).\n")
+        return 0
+
     try:
         with open(log_file, "ab") as lf:
             _vllm_process = subprocess.Popen(cmd, env=env, stdout=lf, stderr=subprocess.STDOUT)

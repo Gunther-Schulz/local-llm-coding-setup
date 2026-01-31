@@ -1,4 +1,5 @@
-"""Runtime config (config/llm-config INI): current model, context mode. Single source for the whole stack."""
+"""Runtime config: current model from llm-config; context mode from config/settings.env (CONTEXT_MODE) or llm-config."""
+import os
 import configparser
 from pathlib import Path
 from .paths import root
@@ -25,11 +26,8 @@ selected_at =
 
 [context]
 mode = normal
-# normal = base context, fast, GPU only
-# extended = extended context (YaRN + CPU offload), slower
-
-[runtime]
-# Override: EXTENDED_CONTEXT_MODE=1 ./run/vllm.sh
+# Overridden by config/settings.env CONTEXT_MODE (normal | extended)
+# extended = YaRN 128K; normal = 32K
 """)
 
 def _read(section: str, key: str) -> str:
@@ -62,6 +60,15 @@ def set_current_model(key: str) -> None:
     _write("model", "selected_at", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
 def get_context_mode() -> str:
+    # Ensure config/settings.env is loaded so CONTEXT_MODE is in os.environ
+    try:
+        from stack import settings  # noqa: F401 - loads settings.env
+    except Exception:
+        pass
+    # config/settings.env CONTEXT_MODE is the central switch (normal | extended)
+    env_mode = os.environ.get("CONTEXT_MODE", "").strip().lower()
+    if env_mode in ("normal", "extended"):
+        return env_mode
     return _read("context", "mode") or "normal"
 
 def set_context_mode(mode: str) -> None:

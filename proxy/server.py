@@ -11,14 +11,12 @@ from stack.settings import (
     DEBUG,
     VLLM_URL,
     MAX_PROMPT_TOKENS,
-    MODEL_MAX_CONTEXT,
+    get_effective_context_limit,
     COMPRESSION_THRESHOLD,
-    COMPRESSION_ENABLED,
-    KEEP_RECENT_MESSAGES,
     SAFETY_MARGIN
 )
-from proxy.utils import total_tokens, extract_text_from_content
-from proxy.compression import compress_messages
+from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
+from proxy.context_manager import manage_context
 from proxy.vision_router import (
     has_image_content, extract_images_and_text,
     query_vision_api, prepare_multimodal_request
@@ -135,36 +133,32 @@ async def handle_chat_completions(request: ChatCompletionRequest):
                         text_parts.append(item.get("text", ""))
                 incoming_messages[i]["content"] = " ".join(text_parts)
     
-    # Cursor manages conversation history and sends it with each request
-    # We just pass it through, compressing only if needed
-    final_messages = incoming_messages
-    
-    # Calculate token budget
-    BACKEND_CTX_LIMIT = MODEL_MAX_CONTEXT
-    prompt_tokens = total_tokens(final_messages, request.tools)
+    # Calculate token budget (uses MODEL_MAX_CONTEXT or MODEL_EXTENDED_CONTEXT)
+    BACKEND_CTX_LIMIT = get_effective_context_limit()
+    prompt_tokens = total_tokens(incoming_messages, request.tools)
     
     if DEBUG:
-        print(f"[DEBUG] Incoming: {len(final_messages)} messages, ~{prompt_tokens} tokens")
+        print(f"[DEBUG] Incoming: {len(incoming_messages)} messages, ~{prompt_tokens} tokens")
     
-    # Compress if prompt exceeds compression threshold
-    if COMPRESSION_ENABLED and prompt_tokens > COMPRESSION_THRESHOLD:
+    # Apply Cursor-style context management if conversation is large
+    conversation_id = get_conversation_id(incoming_messages)
+    final_messages = incoming_messages
+    
+    # Trigger at 30 messages OR 20K tokens
+    if len(incoming_messages) > 30 or prompt_tokens > COMPRESSION_THRESHOLD:
         if DEBUG:
-            print(f"[DEBUG] Prompt exceeds threshold ({prompt_tokens} > {COMPRESSION_THRESHOLD}), compressing...")
+            print(f"[DEBUG] Applying context management (messages: {len(incoming_messages)}, tokens: {prompt_tokens})")
         
-        final_messages = compress_messages(final_messages, keep_recent=KEEP_RECENT_MESSAGES)
+        final_messages = await manage_context(
+            incoming_messages,
+            conversation_id,
+            max_messages=20
+        )
+        
         prompt_tokens = total_tokens(final_messages, request.tools)
         
         if DEBUG:
-            print(f"[DEBUG] After compression: {len(final_messages)} messages, ~{prompt_tokens} tokens")
-    
-    # If still too large after compression (or if compression disabled), enforce hard limit
-    if prompt_tokens > MAX_PROMPT_TOKENS:
-        if DEBUG:
-            print(f"[DEBUG] Prompt exceeds MAX ({prompt_tokens} > {MAX_PROMPT_TOKENS}), truncating...")
-        
-        # Keep only the most recent messages that fit
-        final_messages = final_messages[-4:]  # Last 4 messages minimum
-        prompt_tokens = total_tokens(final_messages, request.tools)
+            print(f"[DEBUG] After context management: {len(final_messages)} messages, ~{prompt_tokens} tokens")
     
     max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
     
