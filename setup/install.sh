@@ -45,35 +45,38 @@ echo ""
 
 # --- 3. PyTorch 2.9.1 cu128 (matches prebuilt vLLM wheel CUDA version) ---
 echo "=== PyTorch 2.9.1 (CUDA 12.8 - matches vLLM prebuilt wheel) ==="
-# Download to local cache first (only fetches if missing)
 if [ ! -f "$WHEEL_CACHE/torch"*"2.9.1"*"cu128"*.whl ]; then
   echo "Downloading PyTorch wheels to $WHEEL_CACHE..."
   pip download torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 \
     --index-url https://download.pytorch.org/whl/cu128 \
-    --dest "$WHEEL_CACHE"
-else
-  echo "Using cached PyTorch wheels from $WHEEL_CACHE"
+    --dest "$WHEEL_CACHE" || true
 fi
-# Install from local cache (fast)
-pip install --no-index --find-links="$WHEEL_CACHE" \
-  torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1
-echo "✓ PyTorch installed"
+if pip install --no-index --find-links="$WHEEL_CACHE" \
+  torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 2>/dev/null; then
+  echo "✓ PyTorch installed from cache"
+else
+  echo "No matching cached wheel; installing PyTorch from index..."
+  pip install torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 \
+    --index-url https://download.pytorch.org/whl/cu128
+  echo "✓ PyTorch installed"
+fi
 echo ""
 
-# --- 4. vLLM 0.14.1 (prebuilt, with sm_100 for RTX 5090) ---
+# --- 4. vLLM 0.14.1 (prebuilt, or build from source if no matching wheel) ---
 echo "=== vLLM 0.14.1 (prebuilt with RTX 5090 support) ==="
-# Download to local cache first (only fetches if missing)
-if [ ! -f "$WHEEL_CACHE/vllm-0.14.1"*.whl ]; then
+if [ ! -f "$WHEEL_CACHE/vllm-0.14.1"*.whl ] 2>/dev/null; then
   echo "Downloading vLLM 0.14.1 wheel to $WHEEL_CACHE..."
   pip download vllm==0.14.1 \
     --dest "$WHEEL_CACHE" \
-    --extra-index-url https://download.pytorch.org/whl/cu128
-else
-  echo "Using cached vLLM wheel from $WHEEL_CACHE"
+    --extra-index-url https://download.pytorch.org/whl/cu128 || true
 fi
-# Install from local cache (fast)
-pip install --no-index --find-links="$WHEEL_CACHE" vllm==0.14.1
-echo "✓ vLLM 0.14.1 installed"
+if pip install --no-index --find-links="$WHEEL_CACHE" vllm==0.14.1 2>/dev/null; then
+  echo "✓ vLLM 0.14.1 installed from cache"
+else
+  echo "No matching prebuilt wheel; building vLLM 0.14.1 from source (this may take a while)..."
+  pip install vllm==0.14.1 --no-binary vllm
+  echo "✓ vLLM 0.14.1 built and installed"
+fi
 echo ""
 
 # --- 5. Verify ---
@@ -103,11 +106,11 @@ echo "Environment: vLLM"
 echo "To activate: conda activate vLLM"
 echo ""
 echo "Installation summary:"
-echo "  • PyTorch 2.9.1+cu128 (CUDA 12.8)"
-echo "  • vLLM 0.14.1 (prebuilt, RTX 5090 sm_100 support)"
+echo "  • PyTorch 2.9.1+cu128 (CUDA 12.8) – from cache or index"
+echo "  • vLLM 0.14.1 – from cache or built from source if no matching wheel"
 echo "  • Python dependencies from requirements.txt"
 echo "  • llama.cpp (vision CPU + CUDA for LLM/benchmark)"
-echo "  • Re-runs: <1 minute (Python cached); llama.cpp skips if already built)"
+echo "  • Re-runs: <1 min if wheels cached; vLLM build-from-source ~10–30 min if needed)"
 echo ""
 echo "Next steps:"
 echo "  1. Select model:   ./run/run select model"
