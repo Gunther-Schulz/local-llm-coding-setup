@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from proxy.models import ChatCompletionRequest
 from stack.settings import (
     DEBUG,
-    VLLM_URL,
+    BACKEND_URL,
     MAX_PROMPT_TOKENS,
     get_effective_context_limit,
     COMPRESSION_THRESHOLD,
@@ -40,7 +40,7 @@ app.add_middleware(
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "backend": VLLM_URL}
+    return {"status": "ok", "backend": BACKEND_URL}
 
 
 @app.get("/v1/models")
@@ -48,7 +48,7 @@ async def list_models():
     """Forward models list from backend."""
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{VLLM_URL}/v1/models")
+            response = await client.get(f"{BACKEND_URL}/v1/models")
             return response.json()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Backend error: {str(e)}")
@@ -224,7 +224,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
         if request.stream:
             import requests
             sync_response = requests.post(
-                f"{VLLM_URL}/v1/chat/completions",
+                f"{BACKEND_URL}/v1/chat/completions",
                 json=backend_request,
                 headers={"Content-Type": "application/json"},
                 stream=True,
@@ -240,7 +240,7 @@ async def handle_chat_completions(request: ChatCompletionRequest):
             # Non-streaming
             async with httpx.AsyncClient(timeout=180.0) as client:
                 backend_response = await client.post(
-                    f"{VLLM_URL}/v1/chat/completions",
+                    f"{BACKEND_URL}/v1/chat/completions",
                     json=backend_request,
                     headers={"Content-Type": "application/json"}
                 )

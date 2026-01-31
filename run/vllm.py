@@ -92,7 +92,7 @@ def main() -> int:
 
     model = args.model or config.get_current_model()
     if not model:
-        print("\n⚠️  No model selected. Run: ./run/select_model.sh\nOr use: -m MODEL_KEY\n")
+        print("\n⚠️  No model selected. Run: ./run/run select model\nOr use: -m MODEL_KEY\n")
         return 1
 
     try:

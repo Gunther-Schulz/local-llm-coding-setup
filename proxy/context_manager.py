@@ -2,7 +2,7 @@
 from typing import List, Dict, Any
 import httpx
 
-from stack.settings import DEBUG, VLLM_URL
+from stack.settings import DEBUG, BACKEND_URL
 
 
 # Store old conversation history for retrieval
@@ -31,7 +31,7 @@ Summary:"""
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{VLLM_URL}/v1/chat/completions",
+                f"{BACKEND_URL}/v1/chat/completions",
                 json={
                     "model": "qwen3-30b-q2",
                     "messages": [{"role": "user", "content": summary_prompt}],

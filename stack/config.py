@@ -28,6 +28,10 @@ selected_at =
 mode = normal
 # Overridden by config/settings.env CONTEXT_MODE (normal | extended)
 # extended = YaRN 128K; normal = 32K
+
+[engine]
+# Backend to run: vllm | llamacpp (uses same models.conf and port 8000)
+key = vllm
 """)
 
 def _read(section: str, key: str) -> str:
@@ -81,6 +85,18 @@ def get_extended_context_mode() -> int:
 
 def set_extended_context_mode(value: int | str) -> None:
     set_context_mode("extended" if str(value) == "1" else "normal")
+
+def get_engine() -> str:
+    """Current LLM engine: vllm | llamacpp. Env LLM_ENGINE overrides."""
+    env_engine = os.environ.get("LLM_ENGINE", "").strip().lower()
+    if env_engine in ("vllm", "llamacpp"):
+        return env_engine
+    return _read("engine", "key") or "vllm"
+
+def set_engine(engine: str) -> None:
+    if engine not in ("vllm", "llamacpp"):
+        raise ValueError(f"Invalid engine: {engine}")
+    _write("engine", "key", engine)
 
 def get_config() -> dict:
     """Get all config values as a dict."""

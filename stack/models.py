@@ -46,20 +46,24 @@ def get_model_config(key: str) -> dict | None:
     return None
 
 def export_model_config(key: str) -> dict:
-    """Set os.environ for vLLM and proxy; return the model dict. Raises if not found."""
+    """Set os.environ for any engine (vLLM, llama.cpp, proxy). Return the model dict. Raises if not found."""
     import os
     m = get_model_config(key)
     if not m:
         raise KeyError(f"Model '{key}' not in {_path()}")
     full = (root() / m["gguf_path"]).resolve()
+    # Generic (engine-agnostic)
     os.environ["SELECTED_MODEL_KEY"] = m["model_key"]
     os.environ["SELECTED_MODEL_NAME"] = m["display_name"]
+    os.environ["MODEL_PATH"] = str(full)
+    os.environ["MODEL_TOKENIZER_ID"] = m["tokenizer_id"]
+    os.environ["MODEL_MAX_CONTEXT"] = str(m["max_context"])
+    os.environ["MODEL_EXTENDED_CONTEXT"] = str(m["extended_context"])
+    os.environ["MODEL_TOOL_FORMAT"] = m["tool_format"]
+    os.environ["MODEL_DOWNLOAD_URL"] = m["download_url"]
+    # vLLM-specific (run/vllm.py)
     os.environ["VLLM_GGUF_MODEL"] = str(full)
     os.environ["VLLM_TOKENIZER_ID"] = m["tokenizer_id"]
     os.environ["VLLM_MAX_LEN"] = str(m["max_context"])
     os.environ["VLLM_TOOL_PARSER"] = m["tool_parser"]
-    os.environ["MODEL_TOOL_FORMAT"] = m["tool_format"]
-    os.environ["MODEL_MAX_CONTEXT"] = str(m["max_context"])
-    os.environ["MODEL_EXTENDED_CONTEXT"] = str(m["extended_context"])
-    os.environ["MODEL_DOWNLOAD_URL"] = m["download_url"]
     return m

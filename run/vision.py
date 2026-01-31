@@ -68,7 +68,7 @@ def main() -> int:
         for m in load_vision_models():
             indicator = "✓" if is_vision_model_downloaded(m["model_key"]) else "✗"
             print(f"  {indicator} {m['model_key']:<20} - {m['display_name']}")
-        print("\nSelect with: ./run/select_vision_model.sh")
+        print("\nSelect with: ./run/run select vision")
         print("Or use: -m MODEL_KEY\n")
         return 1
     
@@ -99,7 +99,7 @@ def main() -> int:
             os.environ["LLAMACPP_BIN"] = str(default_bin)
         else:
             print(f"\n⚠️  llama.cpp multimodal binary not found: {default_bin}")
-            print("Build llama.cpp with: ./setup/build_llamacpp.sh")
+            print("Run ./setup/install.sh (includes llama.cpp vision) or ./setup/build/llamacpp_vision.sh")
             print("Or use --llamacpp-bin to specify a custom path\n")
             return 1
     

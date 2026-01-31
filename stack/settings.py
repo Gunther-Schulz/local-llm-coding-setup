@@ -54,6 +54,9 @@ VLLM_HOST = os.getenv("VLLM_HOST", "0.0.0.0")
 VLLM_PORT = int(os.getenv("VLLM_PORT", "8000"))
 VLLM_URL = os.getenv("VLLM_URL", f"http://localhost:{VLLM_PORT}")
 
+# LLM backend URL (vLLM or llama-server); proxy and clients use this
+BACKEND_URL = os.getenv("BACKEND_URL", f"http://localhost:{VLLM_PORT}")
+
 PROXY_HOST = os.getenv("PROXY_HOST", "0.0.0.0")
 PROXY_PORT = int(os.getenv("PROXY_PORT", "8002"))
 
@@ -117,6 +120,9 @@ VISION_MAX_CONTEXT = int(os.getenv("VISION_MAX_CONTEXT", "32768"))
 # llama.cpp binary path (use mtmd-cli - all specialized binaries are deprecated)
 LLAMACPP_BIN = os.getenv("LLAMACPP_BIN", "./external/llama.cpp/build/bin/llama-mtmd-cli")
 
+# llama-server for LLM engine (when LLM_ENGINE=llamacpp); CUDA build in external/llama.cpp/build-cuda
+LLAMACPP_SERVER_BIN = os.getenv("LLAMACPP_SERVER_BIN", "./external/llama.cpp/build-cuda/bin/llama-server")
+
 
 # ============================================================================
 # Debug and Logging
@@ -150,6 +156,7 @@ def print_config_summary():
     print("=" * 70)
     print("Configuration Summary")
     print("=" * 70)
+    print(f"Backend:     {BACKEND_URL}")
     print(f"vLLM:        {VLLM_URL}")
     print(f"Proxy:       {PROXY_HOST}:{PROXY_PORT}")
     print(f"Vision:      {VISION_URL}")

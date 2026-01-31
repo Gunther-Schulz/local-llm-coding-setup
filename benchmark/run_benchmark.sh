@@ -7,7 +7,7 @@ BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$BENCH_DIR/.." && pwd)"
 
 BENCHMARK_MODEL="${BENCHMARK_MODEL:-$ROOT/models/qwen3-coder-30b-a3b-q4_k_xl/qwen3-coder-30b-a3b-instruct-ud-q4_k_xl.gguf}"
-LLAMA_BENCH="${LLAMA_BENCH:-$BENCH_DIR/llama.cpp/build/bin/llama-bench}"
+LLAMA_BENCH="${LLAMA_BENCH:-$ROOT/external/llama.cpp/build-cuda/bin/llama-bench}"
 
 if [ ! -f "$BENCHMARK_MODEL" ]; then
   echo "Model not found: $BENCHMARK_MODEL"
@@ -17,7 +17,7 @@ fi
 
 if [ ! -x "$LLAMA_BENCH" ]; then
   echo "llama-bench not found: $LLAMA_BENCH"
-  echo "Run ./build_llamacpp.sh first."
+  echo "Run ./setup/install.sh (includes llama.cpp CUDA) or ./setup/build/llamacpp_cuda.sh"
   exit 1
 fi
 

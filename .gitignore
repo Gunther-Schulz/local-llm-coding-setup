@@ -16,6 +16,9 @@ models/
 # External dependencies (llama.cpp, built locally)
 external/
 
+# Obsolete: llama.cpp clone used to live here; now in external/llama.cpp
+benchmark/llama.cpp/
+
 # Python cache
 __pycache__/
 *.pyc

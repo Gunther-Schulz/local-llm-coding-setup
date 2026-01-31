@@ -78,7 +78,7 @@ def main() -> int:
                 # Save selection
                 config.set_config("vision_model", selected["model_key"])
                 print(f"\n✓ Vision model set to: {selected['display_name']}")
-                print(f"  Start with: ./run/vision.sh\n")
+                print(f"  Start with: ./run/run vision\n")
                 return 0
             else:
                 print("\n✗ Invalid selection\n")
