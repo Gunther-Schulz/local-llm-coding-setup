@@ -14,3 +14,4 @@ anyio>=4.0.0
 
 # Context management & tokenization
 transformers>=4.35.0
+rapidfuzz>=3.0.0

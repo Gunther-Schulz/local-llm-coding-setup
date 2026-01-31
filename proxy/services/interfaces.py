@@ -15,9 +15,9 @@ class ContextManagerInterface(ABC):
 
     @abstractmethod
     async def compress_cursor_style(
-        self, messages: List[Dict], conversation_id: str, recent_count: int = 6
+        self, messages: List[Dict], conversation_id: str, recent_count: int = 6, model: Optional[str] = None
     ) -> List[Dict]:
-        """Cursor-style compression: structured summary + last N messages. Used when prompt would exceed backend limit."""
+        """Cursor-style compression: structured summary + last N messages. Used when prompt would exceed backend limit. model: use for summarization (e.g. request.model) or fallback from settings."""
         pass
 
 

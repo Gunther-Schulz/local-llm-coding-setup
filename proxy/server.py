@@ -270,7 +270,7 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
             if DEBUG:
                 print(f"[DEBUG] Prompt over limit ({prompt_tokens}), applying Cursor-style compression")
             final_messages = await context_service.compress_cursor_style(
-                incoming_messages, conversation_id, recent_count=CONTEXT_WINDOW_SIZE
+                incoming_messages, conversation_id, recent_count=CONTEXT_WINDOW_SIZE, model=request.model
             )
             prompt_tokens = total_tokens(final_messages, request.tools)
             max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
@@ -309,6 +309,12 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         print(f"[DEBUG]   context_limit: {BACKEND_CTX_LIMIT}, max_completion_available: {max_completion_allowed}, max_tokens_sent: {effective_max_tokens}")
         print("[DEBUG] --------------------------")
 
+    # Virtual tool: if last message is assistant with tool_calls including search_compressed_conversation
+    # and no result for it, execute and inject the tool result so the backend sees it.
+    final_messages, virtual_injected = _inject_virtual_tool_results(final_messages, conversation_id)
+    if virtual_injected and DEBUG:
+        print(f"[DEBUG] Injected virtual tool result for conversation_id={conversation_id[:12]}...")
+
     # Clean messages: ensure only valid fields; match backend expectations for tool turns
     cleaned_messages = []
     for msg in final_messages:
@@ -337,9 +343,10 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
             cleaned_messages.insert(0, {"role": "system", "content": SYSTEM_MESSAGE_TEXT})
 
     # Optional: remind model it has conversation context and tools (reduces "I can't recall" / "I can't search" / "I'll just advise")
+    # Include when client sent tools or we will add the virtual tool (stored compressed conversation)
     if (
         INJECT_CAPABILITY_REMINDER
-        and request.tools
+        and (request.tools or get_stored(conversation_id))
         and cleaned_messages
         and cleaned_messages[0].get("role") == "system"
     ):
@@ -374,7 +381,8 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         backend_request["tools"] = tools_list
     elif get_stored(conversation_id):
         backend_request["tools"] = [VIRTUAL_TOOL_DEFINITION]
-    if request.tool_choice is not None:
+        backend_request["tool_choice"] = "auto"
+    if request.tool_choice is not None and "tool_choice" not in backend_request:
         backend_request["tool_choice"] = request.tool_choice
     if request.frequency_penalty is not None:
         backend_request["frequency_penalty"] = request.frequency_penalty

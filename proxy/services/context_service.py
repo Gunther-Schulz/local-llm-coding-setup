@@ -44,6 +44,7 @@ class ContextService:
         messages: List[Dict],
         conversation_id: str,
         recent_count: int = 6,
+        model: Optional[str] = None,
     ) -> List[Dict]:
-        """Cursor-style compression: structured summary + last N messages. Use when prompt would exceed backend limit."""
-        return await _compress_cursor_style(messages, conversation_id, recent_count=recent_count)
+        """Cursor-style compression: structured summary + last N messages. Use when prompt would exceed backend limit. model: use this for summarization (e.g. request.model); else fallback from settings."""
+        return await _compress_cursor_style(messages, conversation_id, recent_count=recent_count, model=model)

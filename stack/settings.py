@@ -109,6 +109,14 @@ TOOL_RESPONSE_NO_CONDENSE_PATHS = [p.strip() for p in _TOOL_NO_CONDENSE.split(",
 # Prepend the first user message to the summary so task context (e.g. "use CLIPPY") is kept
 PRESERVE_FIRST_USER_IN_SUMMARY = os.getenv("PRESERVE_FIRST_USER_IN_SUMMARY", "1") == "1"
 
+# Summarization model for Cursor-style compression (when COMPRESSION_ENABLED=1).
+# When the proxy passes the request model (the active chat model), that is used. This is only the fallback when no model is passed (e.g. internal call). Must be a model ID the backend exposes.
+COMPRESSION_SUMMARY_MODEL = os.getenv("COMPRESSION_SUMMARY_MODEL", "qwen3-30b-q2")
+# Timeout in seconds for the summarization LLM call.
+COMPRESSION_SUMMARY_TIMEOUT = int(os.getenv("COMPRESSION_SUMMARY_TIMEOUT", "60"))
+# Fuzzy section match: minimum rapidfuzz ratio (0–100) to accept a section line. Used when exact header match fails.
+COMPRESSION_SECTION_FUZZ_RATIO = int(os.getenv("COMPRESSION_SECTION_FUZZ_RATIO", "60"))
+
 # Virtual tool (search_compressed_conversation): max compressed conversations to keep in memory.
 # 0 or negative = unlimited (full history). Positive = FIFO eviction after that many.
 COMPRESSED_STORE_MAX_CONVERSATIONS = int(os.getenv("COMPRESSED_STORE_MAX_CONVERSATIONS", "0"))
