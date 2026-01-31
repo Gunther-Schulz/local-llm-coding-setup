@@ -1,17 +1,13 @@
-"""Context management: summarization + sliding window + condense large tool responses.
+"""Context management: Cursor-style compression + condense large tool responses.
 
-Cursor (docs/blog) does two things we align with and one we cannot:
-- Summarization when context fills: Cursor auto-summarizes and gives the agent chat history
-  as a file so it can search for lost details. We summarize old messages and keep a sliding
-  window of recent ones; we do not expose history-as-file (proxy has no client filesystem).
-- Long tool responses: Cursor writes them to a file and lets the agent Read/tail on demand,
-  avoiding truncation. We cannot write to the client FS, so we condense to a preview
-  (TOOL_RESPONSE_MAX_VERBATIM / TOOL_RESPONSE_PREVIEW_CHARS). Optional future: proxy could
-  store full results by tool_call_id and expose GET /v1/tool-results/{id} for clients that
-  add a "fetch full result" tool.
-  Instruction docs (e.g. CLIPPY_MKII.md) and code files (e.g. proxy/*.py) can be excluded via
-  TOOL_RESPONSE_NO_CONDENSE_PATHS so the model sees full content in one Read instead of a short
-  preview and many follow-up Reads.
+Cursor-style (inferred from proxy log when Cursor Cloud gets 413):
+- One [Previous conversation summary] user message with structured sections (Primary Request,
+  Key Concepts, Files, Errors, Problem Solving, User messages, Pending Tasks, Current State,
+  Optional Next Step) + last N messages verbatim. Trigger: when prompt would exceed backend
+  limit (overflow only).
+- Long tool responses: we condense to a preview (TOOL_RESPONSE_MAX_VERBATIM /
+  TOOL_RESPONSE_PREVIEW_CHARS). Instruction docs (e.g. CLIPPY_MKII.md) can be excluded via
+  TOOL_RESPONSE_NO_CONDENSE_PATHS.
 """
 from typing import List, Dict, Any, Optional
 import fnmatch
@@ -30,47 +26,119 @@ from stack.settings import (
 )
 
 
-# Store old conversation history for retrieval
-_conversation_archives: Dict[str, List[Dict]] = {}
+# Cursor-style structured summary sections (inferred from Cursor Cloud post-413 request shape)
+_CURSOR_SUMMARY_SECTIONS = """1.  Primary Request and Intent:
+    (What the user asked for and any clarifications.)
+
+2.  Key Technical Concepts:
+    (Technologies, patterns, file roles, and terms that matter.)
+
+3.  Files and Code Sections:
+    (Important files and what was read/edited, with paths and line references.)
+
+4.  Errors and fixes:
+    (What went wrong and how it was fixed.)
+
+5.  Problem Solving:
+    (How the task was approached and decisions made.)
+
+6.  All user messages:
+    (Short list of each user message or request.)
+
+7.  Pending Tasks:
+    (What was left to do or follow-up.)
+
+8.  Current State:
+    (Where things stand now.)
+
+9.  Optional Next Step:
+    (What the model could do next if the user continues.)"""
 
 
-async def summarize_conversation(messages: List[Dict]) -> str:
-    """Use the LLM to summarize old conversation context."""
-    # Build summarization prompt
+async def summarize_conversation_cursor_style(messages: List[Dict]) -> str:
+    """Use the LLM to produce a Cursor-style structured summary (sections like Primary Request, Key Concepts, Files, etc.)."""
     conversation_text = "\n\n".join([
-        f"{msg.get('role', 'user')}: {_extract_content_preview(msg)}"
+        f"{msg.get('role', 'user')}: {_extract_content_preview(msg, max_chars=800)}"
         for msg in messages
     ])
-    
-    summary_prompt = f"""Summarize this conversation history in 2-3 concise paragraphs. Focus on:
-- What the user is working on
-- Key decisions made
-- Current state and goals
-- Important context that should be remembered
+    summary_prompt = f"""Summarize this conversation history in the following structured format. Use the exact section numbers and titles. Be concise but preserve what the model needs to continue the task.
+
+Sections to produce:
+{_CURSOR_SUMMARY_SECTIONS}
 
 Conversation:
 {conversation_text}
 
-Summary:"""
+Your structured summary (use the section numbers and titles above):"""
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{BACKEND_URL}/v1/chat/completions",
                 json={
                     "model": "qwen3-30b-q2",
                     "messages": [{"role": "user", "content": summary_prompt}],
-                    "max_tokens": 512,
+                    "max_tokens": 1500,
                     "temperature": 0.3
                 }
             )
             response.raise_for_status()
             result = response.json()
-            return result["choices"][0]["message"]["content"]
+            return result["choices"][0]["message"]["content"].strip()
     except Exception as e:
         if DEBUG:
-            print(f"[WARNING] Summarization failed: {e}, using fallback")
-        return f"[Previous conversation with {len(messages)} messages about code work]"
+            print(f"[WARNING] Cursor-style summarization failed: {e}, using fallback")
+        return f"[Previous conversation with {len(messages)} messages about code work. Primary request and context omitted due to summarization failure.]"
+
+
+async def compress_cursor_style(
+    messages: List[Dict],
+    conversation_id: str,
+    recent_count: int = 6,
+) -> List[Dict]:
+    """
+    Cursor-style compression: one structured [Previous conversation summary] user message + last N messages.
+    Use when prompt would exceed backend limit (overflow). Replaces old sliding-window + short summary.
+    """
+    # Separate system from conversation
+    system_prompt = None
+    conversation_messages = messages
+    if messages and messages[0].get("role") == "system":
+        system_prompt = messages[0]
+        conversation_messages = messages[1:]
+
+    if len(conversation_messages) <= recent_count:
+        return messages
+
+    split_point = len(conversation_messages) - recent_count
+    old_messages = conversation_messages[:split_point]
+    recent_messages = conversation_messages[split_point:]
+
+    if DEBUG:
+        print(f"[DEBUG] Cursor-style compress: {len(old_messages)} old, {len(recent_messages)} recent (recent_count={recent_count})")
+
+    summary = await summarize_conversation_cursor_style(old_messages)
+    if PRESERVE_FIRST_USER_IN_SUMMARY:
+        first_user = next((m for m in old_messages if m.get("role") == "user"), None)
+        if first_user:
+            first_content = _extract_content_preview(first_user, max_chars=2000)
+            summary_content = f"[Previous conversation summary]: Summary:\n[Initial user request]:\n{first_content}\n\n{summary}"
+        else:
+            summary_content = f"[Previous conversation summary]: Summary:\n{summary}"
+    else:
+        summary_content = f"[Previous conversation summary]: Summary:\n{summary}"
+
+    summary_message = {"role": "user", "content": summary_content}
+    condensed_recent = condense_tool_responses_with_context(recent_messages)
+
+    final = []
+    if system_prompt:
+        final.append(system_prompt)
+    final.append(summary_message)
+    final.extend(condensed_recent)
+    if DEBUG:
+        print(f"[DEBUG] Cursor-style result: {len(final)} messages (1 summary + {len(condensed_recent)} recent)")
+    return final
 
 
 def _extract_content_preview(msg: Dict, max_chars: int = 200) -> str:
@@ -182,80 +250,3 @@ def condense_tool_responses_with_context(
             print(f"[DEBUG] No condense for tool result (path matches): {path}")
         result.append(condense_large_tool_response(msg, skip_condense=skip))
     return result
-
-
-async def manage_context(
-    messages: List[Dict],
-    conversation_id: str,
-    max_messages: int = 20
-) -> List[Dict]:
-    """
-    When conversation is large (message or token threshold): keep last N messages
-    (sliding window), summarize older ones into one user message, condense large
-    tool responses in the kept window. Archives old messages in memory per
-    conversation_id (for possible future retrieval).
-    """
-    if len(messages) <= max_messages:
-        # Small conversation, no management needed
-        return messages
-    
-    # Separate system prompt from conversation
-    system_prompt = None
-    conversation_messages = messages
-    
-    if messages and messages[0].get("role") == "system":
-        system_prompt = messages[0]
-        conversation_messages = messages[1:]
-    
-    # Split: old messages to summarize vs recent to keep
-    split_point = len(conversation_messages) - max_messages
-    old_messages = conversation_messages[:split_point]
-    recent_messages = conversation_messages[split_point:]
-    
-    if DEBUG:
-        print(f"[DEBUG] Context management: {len(old_messages)} old, {len(recent_messages)} recent")
-    
-    # Archive old messages for retrieval
-    if conversation_id not in _conversation_archives:
-        _conversation_archives[conversation_id] = []
-    _conversation_archives[conversation_id].extend(old_messages)
-    
-    if DEBUG:
-        print(f"[DEBUG] Archived {len(old_messages)} messages (total archive: {len(_conversation_archives[conversation_id])})")
-
-    # Summarize old context
-    _sum_start = time.perf_counter()
-    summary = await summarize_conversation(old_messages)
-    if DEBUG:
-        print(f"[DEBUG] Summarization took {time.perf_counter() - _sum_start:.2f}s")
-        print(f"[DEBUG] Generated summary: {summary[:100]}...")
-    
-    # Prepend first user message so task context (e.g. "use CLIPPY") stays in context
-    summary_parts = []
-    if PRESERVE_FIRST_USER_IN_SUMMARY:
-        first_user = next((m for m in old_messages if m.get("role") == "user"), None)
-        if first_user:
-            first_content = _extract_content_preview(first_user, max_chars=2000)
-            summary_parts.append(f"[Initial user request]:\n{first_content}\n")
-    summary_parts.append(f"[Previous conversation summary]:\n{summary}\n\n[Continuing conversation...]")
-    summary_content = "\n".join(summary_parts)
-
-    summary_message = {
-        "role": "user",
-        "content": summary_content
-    }
-
-    # Condense large tool responses in recent messages (instruction docs bypassed via patterns)
-    condensed_recent = condense_tool_responses_with_context(recent_messages)
-    
-    # Build final context
-    final_messages = []
-    if system_prompt:
-        final_messages.append(system_prompt)
-    final_messages.append(summary_message)
-    final_messages.extend(condensed_recent)
-    
-    if DEBUG:
-        print(f"[DEBUG] Final context: {len(final_messages)} messages (1 summary + {len(condensed_recent)} recent)")
-    
-    return final_messages

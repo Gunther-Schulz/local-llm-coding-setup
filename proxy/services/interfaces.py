@@ -5,18 +5,19 @@ from abc import ABC, abstractmethod
 
 
 class ContextManagerInterface(ABC):
-    """Interface for context management services."""
+    """Interface for context management: Cursor-style compression on overflow + tool condense."""
     
     @abstractmethod
-    async def manage_context(self, messages: List[Dict], conversation_id: str, 
-                           max_messages: int = 20) -> List[Dict]:
-        """Manage conversation context with sliding window and summarization."""
-        pass
-    
-    @abstractmethod
-    async def condense_tool_responses_with_context(self, messages: List[Dict], 
+    def condense_tool_responses_with_context(self, messages: List[Dict], 
                                                  no_condense_patterns: Optional[List[str]] = None) -> List[Dict]:
         """Condense large tool responses while maintaining context."""
+        pass
+
+    @abstractmethod
+    async def compress_cursor_style(
+        self, messages: List[Dict], conversation_id: str, recent_count: int = 6
+    ) -> List[Dict]:
+        """Cursor-style compression: structured summary + last N messages. Used when prompt would exceed backend limit."""
         pass
 
 

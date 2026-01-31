@@ -16,12 +16,12 @@ from stack.settings import (
     MAX_PROMPT_TOKENS,
     get_effective_context_limit,
     COMPRESSION_ENABLED,
-    COMPRESSION_THRESHOLD,
-    COMPRESSION_TRIGGER_MESSAGES,
     CONTEXT_WINDOW_SIZE,
     SAFETY_MARGIN,
-    COMPRESSION_ONLY_WHEN_NEAR_LIMIT,
-    COMPRESSION_NEAR_LIMIT_FRACTION,
+    INJECT_SYSTEM_MESSAGE,
+    SYSTEM_MESSAGE_TEXT,
+    INJECT_CAPABILITY_REMINDER,
+    CAPABILITY_REMINDER_TEXT,
 )
 from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
 from proxy.services.context_service import ContextService
@@ -62,8 +62,13 @@ async def startup_log():
     """Log proxy config when DEBUG so logs show what is active."""
     if DEBUG:
         ctx = get_effective_context_limit()
-        comp = "off" if not COMPRESSION_ENABLED else ("near_limit" if COMPRESSION_ONLY_WHEN_NEAR_LIMIT else "on")
+        comp = "cursor_style_on_overflow" if COMPRESSION_ENABLED else "off"
         print(f"[DEBUG] Proxy config: backend={BACKEND_URL}, context_limit={ctx}, compression={comp}")
+        if INJECT_SYSTEM_MESSAGE:
+            if SYSTEM_MESSAGE_TEXT:
+                print(f"[DEBUG] System message injection: on (from config)")
+            else:
+                print(f"[DEBUG] System message injection: on but SYSTEM_MESSAGE_FILE empty or missing – not injecting")
 
 
 @app.get("/health")
@@ -102,6 +107,9 @@ async def chat_completions_v1(request: Request):
               f"messages: {len(body_json.get('messages', []))}, tools: {'tools' in body_json}")
         
         if DEBUG:
+            # Log request headers (to discover Cursor vs other clients, e.g. for system-message injection)
+            headers_dict = dict(request.headers) if request.headers else {}
+            print(f"[DEBUG] Request headers:\n{json.dumps(headers_dict, indent=2)}")
             print(f"[DEBUG] Full request:\n{json.dumps(body_json, indent=2)}")
         
         # Parse request
@@ -180,64 +188,20 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
                         text_parts.append(item.get("text", ""))
                 incoming_messages[i]["content"] = " ".join(text_parts)
     
-    # Condense + sliding window only when COMPRESSION_ENABLED
+    # Cursor-style compression: when COMPRESSION_ENABLED, condense tool responses then compress on overflow only.
     tokens_before_condense = total_tokens(incoming_messages, request.tools)
     BACKEND_CTX_LIMIT = get_effective_context_limit()
     if COMPRESSION_ENABLED:
-        near_limit_threshold = int(BACKEND_CTX_LIMIT * COMPRESSION_NEAR_LIMIT_FRACTION)
-        skip_condense = (
-            COMPRESSION_ONLY_WHEN_NEAR_LIMIT
-            and tokens_before_condense <= near_limit_threshold
-        )
-        if not skip_condense:
-            incoming_messages = context_service.condense_tool_responses_with_context(incoming_messages)
-        elif DEBUG:
-            print(f"[DEBUG] No tool condense (under {near_limit_threshold} tokens, near_limit mode)")
-    else:
-        if DEBUG:
-            print(f"[DEBUG] Compression disabled, pass-through")
+        incoming_messages = context_service.condense_tool_responses_with_context(incoming_messages)
     tool_responses_condensed = sum(1 for m in incoming_messages if m.get("_full_content_length") is not None)
     tokens_after_condense = total_tokens(incoming_messages, request.tools)
     prompt_tokens = tokens_after_condense
 
     conversation_id = get_conversation_id(incoming_messages)
     final_messages = incoming_messages
-    sliding_window_active = False
-    trigger_reason = None
-    messages_summarized = 0
-    messages_kept = 0
-
-    sliding_trigger = False
-    if COMPRESSION_ENABLED:
-        sliding_trigger = (
-            prompt_tokens > COMPRESSION_THRESHOLD
-            if COMPRESSION_ONLY_WHEN_NEAR_LIMIT
-            else prompt_tokens > COMPRESSION_THRESHOLD
-        )
-    if sliding_trigger:
-        sliding_window_active = True
-        if COMPRESSION_ONLY_WHEN_NEAR_LIMIT:
-            trigger_reason = f"tokens>{COMPRESSION_THRESHOLD} (near_limit mode)"
-        elif len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES and prompt_tokens > COMPRESSION_THRESHOLD:
-            trigger_reason = f"messages>{COMPRESSION_TRIGGER_MESSAGES} and tokens>{COMPRESSION_THRESHOLD}"
-        elif len(incoming_messages) > COMPRESSION_TRIGGER_MESSAGES:
-            trigger_reason = f"messages>{COMPRESSION_TRIGGER_MESSAGES}"
-        else:
-            trigger_reason = f"tokens>{COMPRESSION_THRESHOLD}"
-        conv_count = len(incoming_messages) - (1 if incoming_messages and incoming_messages[0].get("role") == "system" else 0)
-        messages_summarized = max(0, conv_count - CONTEXT_WINDOW_SIZE)
-        messages_kept = CONTEXT_WINDOW_SIZE
-
-        final_messages = await context_service.manage_context(
-            incoming_messages,
-            conversation_id,
-            max_messages=CONTEXT_WINDOW_SIZE
-        )
-        prompt_tokens = total_tokens(final_messages, request.tools)
+    cursor_style_compressed = False
 
     max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
-
-    # Use client max_tokens if set; otherwise allow full completion up to backend capacity (no artificial cap)
     requested = request.max_tokens or request.max_completion_tokens
     if requested and requested > max_completion_allowed:
         if DEBUG:
@@ -245,8 +209,27 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         requested = max_completion_allowed
     effective_max_tokens = requested if requested else max_completion_allowed
     MIN_MAX_TOKENS = 64
-    if effective_max_tokens < MIN_MAX_TOKENS:
-        if max_completion_allowed < MIN_MAX_TOKENS:
+    if effective_max_tokens < MIN_MAX_TOKENS and max_completion_allowed < MIN_MAX_TOKENS:
+        # Would return 413: try Cursor-style compression if enabled
+        if COMPRESSION_ENABLED:
+            if DEBUG:
+                print(f"[DEBUG] Prompt over limit ({prompt_tokens}), applying Cursor-style compression")
+            final_messages = await context_service.compress_cursor_style(
+                incoming_messages, conversation_id, recent_count=CONTEXT_WINDOW_SIZE
+            )
+            prompt_tokens = total_tokens(final_messages, request.tools)
+            max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
+            cursor_style_compressed = True
+            if max_completion_allowed < MIN_MAX_TOKENS:
+                if DEBUG:
+                    print(f"[DEBUG] Rejecting: still too long after compression ({prompt_tokens} > {BACKEND_CTX_LIMIT})")
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Prompt too long: {prompt_tokens} tokens exceeds backend context ({BACKEND_CTX_LIMIT}). "
+                    "Shorten the conversation or use fewer tool results."
+                )
+            effective_max_tokens = min(MIN_MAX_TOKENS, max_completion_allowed)
+        else:
             if DEBUG:
                 print(f"[DEBUG] Rejecting: prompt too long ({prompt_tokens} > {BACKEND_CTX_LIMIT})")
             raise HTTPException(
@@ -254,6 +237,7 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
                 detail=f"Prompt too long: {prompt_tokens} tokens exceeds backend context ({BACKEND_CTX_LIMIT}). "
                 "Shorten the conversation or use fewer tool results."
             )
+    elif effective_max_tokens < MIN_MAX_TOKENS:
         effective_max_tokens = min(MIN_MAX_TOKENS, max_completion_allowed)
 
     if DEBUG:
@@ -264,13 +248,9 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         print(f"[DEBUG]   stream: {bool(request.stream)}, conversation_id: {conv_id_short}, elapsed_ms: {elapsed_ms}")
         print(f"[DEBUG]   messages_in: {len(incoming_messages)}, tokens_in: {tokens_before_condense}")
         print(f"[DEBUG]   tool_condense: {tool_responses_condensed} response(s) condensed, tokens_after_condense: {tokens_after_condense}")
-        if sliding_window_active:
-            print(f"[DEBUG]   sliding_window: yes (trigger: {trigger_reason})")
-            print(f"[DEBUG]   window_size: {CONTEXT_WINDOW_SIZE}, messages_summarized: {messages_summarized}, messages_kept: {messages_kept}")
-            print(f"[DEBUG]   messages_out: {len(final_messages)}, tokens_out: {prompt_tokens}")
-        else:
-            print(f"[DEBUG]   sliding_window: no")
-            print(f"[DEBUG]   messages_out: {len(final_messages)}, tokens_out: {prompt_tokens}")
+        if cursor_style_compressed:
+            print(f"[DEBUG]   cursor_style_overflow: yes (recent_count: {CONTEXT_WINDOW_SIZE})")
+        print(f"[DEBUG]   messages_out: {len(final_messages)}, tokens_out: {prompt_tokens}")
         print(f"[DEBUG]   context_limit: {BACKEND_CTX_LIMIT}, max_completion_available: {max_completion_allowed}, max_tokens_sent: {effective_max_tokens}")
         print("[DEBUG] --------------------------")
 
@@ -292,7 +272,26 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         if msg.get("name"):
             cleaned["name"] = msg["name"]
         cleaned_messages.append(cleaned)
-    
+
+    # Optional: inject Cursor-style system message when using clients that don't send one (e.g. Continue).
+    # When INJECT_SYSTEM_MESSAGE=0 (default for Cursor Cloud), leave messages as-is to avoid duplication.
+    if INJECT_SYSTEM_MESSAGE and SYSTEM_MESSAGE_TEXT:
+        if cleaned_messages and cleaned_messages[0].get("role") == "system":
+            cleaned_messages[0]["content"] = SYSTEM_MESSAGE_TEXT
+        else:
+            cleaned_messages.insert(0, {"role": "system", "content": SYSTEM_MESSAGE_TEXT})
+
+    # Optional: remind model it has conversation context and tools (reduces "I can't recall" / "I can't search" / "I'll just advise")
+    if (
+        INJECT_CAPABILITY_REMINDER
+        and request.tools
+        and cleaned_messages
+        and cleaned_messages[0].get("role") == "system"
+    ):
+        existing = cleaned_messages[0].get("content") or ""
+        if isinstance(existing, str) and CAPABILITY_REMINDER_TEXT.strip() not in existing:
+            cleaned_messages[0]["content"] = existing.rstrip() + CAPABILITY_REMINDER_TEXT
+
     # Build backend request
     backend_request = {
         "model": request.model,

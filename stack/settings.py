@@ -91,29 +91,49 @@ SAFETY_MARGIN = int(os.getenv("SAFETY_MARGIN", "1536"))  # Reserve for response
 
 
 # ============================================================================
-# Compression Settings (proxy feature toggles: config/settings.env "Proxy feature toggles")
+# Compression Settings (Cursor-style: trigger on overflow only)
 # ============================================================================
-# When 0: no tool condense, no sliding window; requests pass through until backend hits its limit (e.g. 413).
-COMPRESSION_ENABLED = os.getenv("COMPRESSION_ENABLED", "1") == "1"
+# When 1: condense tool responses on every request; when prompt would exceed backend limit (413),
+# apply Cursor-style compression (structured summary + last N messages) instead of returning 413.
+# When 0: pass-through; return 413 when over limit (e.g. for Cursor Cloud which compresses on 413).
+COMPRESSION_ENABLED = os.getenv("COMPRESSION_ENABLED", "0") == "1"
 
-# Context management (Cursor-style: summarization + sliding window)
-COMPRESSION_THRESHOLD = int(os.getenv("COMPRESSION_THRESHOLD", "15000"))  # Trigger summarization when prompt tokens exceed this
-COMPRESSION_TRIGGER_MESSAGES = int(os.getenv("COMPRESSION_TRIGGER_MESSAGES", "30"))  # Or when message count exceeds this
-CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", "20"))  # Keep this many recent messages verbatim
-MAX_ARCHIVE_MESSAGES = int(os.getenv("MAX_ARCHIVE_MESSAGES", "200"))  # Max messages to keep in archive per conversation
+# Cursor-style: how many recent messages to keep verbatim after the [Previous conversation summary].
+CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", "6"))
 # Tool response condensing (messages with role=tool longer than this get preview only)
 TOOL_RESPONSE_MAX_VERBATIM = int(os.getenv("TOOL_RESPONSE_MAX_VERBATIM", "2000"))
 TOOL_RESPONSE_PREVIEW_CHARS = int(os.getenv("TOOL_RESPONSE_PREVIEW_CHARS", "500"))
 # Comma-separated path patterns for which tool responses are never condensed (fnmatch).
-# Set in config/settings.env; empty = condense all large tool responses.
 _TOOL_NO_CONDENSE = os.getenv("TOOL_RESPONSE_NO_CONDENSE_PATHS", "")
 TOOL_RESPONSE_NO_CONDENSE_PATHS = [p.strip() for p in _TOOL_NO_CONDENSE.split(",") if p.strip()]
-# When sliding window is active, prepend the first user message to the summary so task context is kept
+# Prepend the first user message to the summary so task context (e.g. "use CLIPPY") is kept
 PRESERVE_FIRST_USER_IN_SUMMARY = os.getenv("PRESERVE_FIRST_USER_IN_SUMMARY", "1") == "1"
-# When 1: only condense tool responses and trigger sliding window when prompt is near context limit
-# (tokens > context_limit * 0.85). Avoids compressing when Cursor traffic would fit in 128k anyway.
-COMPRESSION_ONLY_WHEN_NEAR_LIMIT = os.getenv("COMPRESSION_ONLY_WHEN_NEAR_LIMIT", "0") == "1"
-COMPRESSION_NEAR_LIMIT_FRACTION = float(os.getenv("COMPRESSION_NEAR_LIMIT_FRACTION", "0.85"))
+
+
+# ============================================================================
+# System message injection (for clients that don't send one, e.g. Continue)
+# ============================================================================
+# When 1: replace/prepend with Cursor-style system message from SYSTEM_MESSAGE_FILE.
+# When 0 (default): do not inject; client provides system message (e.g. Cursor Cloud).
+# Set to 1 when using Continue or other clients that don't send a system message.
+INJECT_SYSTEM_MESSAGE = os.getenv("INJECT_SYSTEM_MESSAGE", "0") == "1"
+
+SYSTEM_MESSAGE_FILE = os.getenv("SYSTEM_MESSAGE_FILE", "config/system_message.txt")
+
+
+def _load_system_message_text() -> str:
+    """Load system message from SYSTEM_MESSAGE_FILE (project root relative). Empty if missing or unset."""
+    root = Path(__file__).resolve().parents[1]
+    path = root / SYSTEM_MESSAGE_FILE if not os.path.isabs(SYSTEM_MESSAGE_FILE) else Path(SYSTEM_MESSAGE_FILE)
+    try:
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    return ""
+
+
+SYSTEM_MESSAGE_TEXT = _load_system_message_text()
 
 
 # ============================================================================
@@ -122,6 +142,35 @@ COMPRESSION_NEAR_LIMIT_FRACTION = float(os.getenv("COMPRESSION_NEAR_LIMIT_FRACTI
 
 # Tool parser format: "openai", "qwen2.5", "qwen3", "auto"
 MODEL_TOOL_FORMAT = os.getenv("MODEL_TOOL_FORMAT", "openai")
+
+# When 1: prepend a short capability reminder to the system message so the model uses
+# conversation context and tools instead of claiming it cannot (recall history, WebSearch, edits).
+INJECT_CAPABILITY_REMINDER = os.getenv("INJECT_CAPABILITY_REMINDER", "1") == "1"
+
+_CAPABILITY_REMINDER_DEFAULT = (
+    "\n\n<capability_reminder>\n"
+    "In this session you have (1) the full conversation in the messages above—use it to recall or refer to earlier messages; "
+    "(2) the tools listed in this request—use them when appropriate (e.g. WebSearch for current info, StrReplace/Write for file changes) rather than only advising. "
+    "Do not claim you lack history or capabilities that are present in this request.\n"
+    "</capability_reminder>\n"
+)
+
+
+def _load_capability_reminder_text() -> str:
+    """Load capability reminder from config/capability_reminder.txt, or return default if missing."""
+    root = Path(__file__).resolve().parents[1]
+    path = root / "config" / "capability_reminder.txt"
+    try:
+        if path.exists():
+            text = path.read_text(encoding="utf-8").strip()
+            if text:
+                return "\n\n" + text + "\n"
+    except OSError:
+        pass
+    return _CAPABILITY_REMINDER_DEFAULT
+
+
+CAPABILITY_REMINDER_TEXT = _load_capability_reminder_text()
 
 
 # ============================================================================
@@ -178,9 +227,8 @@ def print_config_summary():
     print(f"Vision:      {VISION_URL}")
     print(f"Context:     {MODEL_MAX_CONTEXT} tokens")
     print(f"Max Prompt:  {MAX_PROMPT_TOKENS} tokens")
-    print(f"Context Mgmt: Cursor-style (summarization + window)")
-    print(f"  Threshold:    {COMPRESSION_THRESHOLD} tokens (or when messages > {COMPRESSION_TRIGGER_MESSAGES})")
-    print(f"  Window Size:  {CONTEXT_WINDOW_SIZE} messages (keep recent verbatim)")
-    print(f"  Max Archive:  {MAX_ARCHIVE_MESSAGES} messages")
+    print(f"Context Mgmt: Cursor-style (trigger on overflow only)")
+    print(f"  Compression:  {'On' if COMPRESSION_ENABLED else 'Off'} (compress when prompt would exceed limit)")
+    print(f"  Window Size:  {CONTEXT_WINDOW_SIZE} recent messages after summary")
     print(f"Debug:       {'On' if DEBUG else 'Off'}")
     print("=" * 70)

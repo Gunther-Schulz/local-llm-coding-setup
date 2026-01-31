@@ -84,12 +84,12 @@ def main() -> int:
         f.write("")
     
     effective_ctx = int(os.environ.get("MODEL_MAX_CONTEXT", "32768"))
-    threshold = os.environ.get("COMPRESSION_THRESHOLD", "80000")
+    comp = "Cursor-style on overflow" if os.getenv("COMPRESSION_ENABLED", "0") == "1" else "off"
     print(f"\n🚀 Starting Compression Proxy")
     print(f"   Listen:     {args.host}:{args.port}")
     print(f"   vLLM:       {args.vllm_url}")
     print(f"   Vision:     {args.vision_url}")
-    print(f"   Context:    {effective_ctx} tokens (threshold {threshold})")
+    print(f"   Context:    {effective_ctx} tokens (compression: {comp})")
     debug_on = os.getenv("DEBUG", "0") == "1"
     print(f"   Debug:      {'On' if debug_on else 'Off'} (-d or DEBUG=1 in config/settings.env)")
     print(f"   Logs:       {log_file}\n")
