@@ -237,13 +237,13 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
 
     max_completion_allowed = max(1, BACKEND_CTX_LIMIT - SAFETY_MARGIN - prompt_tokens)
 
-    # Determine effective max_tokens - be more conservative
+    # Use client max_tokens if set; otherwise allow full completion up to backend capacity (no artificial cap)
     requested = request.max_tokens or request.max_completion_tokens
     if requested and requested > max_completion_allowed:
         if DEBUG:
             print(f"[DEBUG] Requested {requested} tokens, but only {max_completion_allowed} available - capping")
         requested = max_completion_allowed
-    effective_max_tokens = requested if requested else min(max_completion_allowed, 2048)
+    effective_max_tokens = requested if requested else max_completion_allowed
     MIN_MAX_TOKENS = 64
     if effective_max_tokens < MIN_MAX_TOKENS:
         if max_completion_allowed < MIN_MAX_TOKENS:
