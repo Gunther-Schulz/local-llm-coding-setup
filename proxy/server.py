@@ -147,6 +147,12 @@ async def list_models(request: Request):
     return data
 
 
+@app.get("/models")
+async def list_models_no_v1(request: Request):
+    """Alias for clients that request /models instead of /v1/models (e.g. some Cursor configs)."""
+    return await list_models(request)
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions_v1(request: Request):
     """Handle chat completions with compression, vision routing, and tool transformation."""
@@ -182,6 +188,12 @@ async def chat_completions_v1(request: Request):
         print(f"[ERROR] Request {request_id} failed: {e}")
         print(f"[ERROR] {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/completions")
+async def chat_completions_no_v1(request: Request):
+    """Alias for clients that request /chat/completions instead of /v1/chat/completions (e.g. some Cursor configs)."""
+    return await chat_completions_v1(request)
 
 
 async def handle_chat_completions(request: ChatCompletionRequest, request_id: Optional[str] = None):

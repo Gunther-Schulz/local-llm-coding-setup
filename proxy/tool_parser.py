@@ -68,16 +68,25 @@ def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
             seen.add(key)
             tool_calls.append(_make_tool_call(name, {"path": path}))
 
-    # <function=Read> or <function name="Read"> with <file>path</file> inside
+    # <function=Read> or <function name="Read"> with <file>path</file> or <parameter=path>...</parameter> inside
     for m in re.finditer(r"<function\s*=?\s*(\w+)>(.*?)</function>", content, re.DOTALL | re.IGNORECASE):
         name = m.group(1).strip()
         if not name:
             continue
         name = name[0].upper() + name[1:].lower()
         inner = m.group(2)
+        path = None
         file_m = re.search(r"<file>(.*?)</file>", inner, re.DOTALL | re.IGNORECASE)
         if file_m:
             path = file_m.group(1).strip()
+        if not path:
+            # <parameter=path>value</parameter> or <parameter name="path">value</parameter>
+            param_m = re.search(r"<parameter\s+(?:name=[\"']?path[\"']?|=\s*[\"']?path[\"']?)\s*>(.*?)</parameter>", inner, re.DOTALL | re.IGNORECASE)
+            if not param_m:
+                param_m = re.search(r"<parameter=path>(.*?)</parameter>", inner, re.DOTALL | re.IGNORECASE)
+            if param_m:
+                path = param_m.group(1).strip()
+        if path:
             key = (name, path)
             if key not in seen:
                 seen.add(key)
