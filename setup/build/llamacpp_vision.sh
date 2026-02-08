@@ -13,14 +13,6 @@ echo "  Building llama.cpp for Vision Support"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
-# Check if already built (check for new or old binary name)
-if [ -f "$BUILD_DIR/bin/llama-mtmd-cli" ] || [ -f "$BUILD_DIR/bin/llama-llava-cli" ]; then
-    BINARY=$([ -f "$BUILD_DIR/bin/llama-mtmd-cli" ] && echo "llama-mtmd-cli" || echo "llama-llava-cli")
-    echo "✓ llama.cpp already built at: $BUILD_DIR/bin/$BINARY"
-    echo ""
-    exit 0
-fi
-
 # Clone llama.cpp if needed
 if [ ! -d "$LLAMACPP_DIR" ]; then
     echo "Cloning llama.cpp..."
@@ -29,8 +21,21 @@ if [ ! -d "$LLAMACPP_DIR" ]; then
     echo "✓ Cloned llama.cpp"
     echo ""
 else
-    echo "✓ llama.cpp already cloned"
+    echo "✓ llama.cpp already at $LLAMACPP_DIR"
+    echo "  Pulling latest..."
+    (cd "$LLAMACPP_DIR" && git fetch origin && git checkout master 2>/dev/null; git pull origin master 2>/dev/null) || true
     echo ""
+fi
+
+# Check if already built (skip unless FORCE_LLAMACPP_REBUILD=1)
+if [ -z "$FORCE_LLAMACPP_REBUILD" ]; then
+    if [ -f "$BUILD_DIR/bin/llama-mtmd-cli" ] || [ -f "$BUILD_DIR/bin/llama-llava-cli" ]; then
+        BINARY=$([ -f "$BUILD_DIR/bin/llama-mtmd-cli" ] && echo "llama-mtmd-cli" || echo "llama-llava-cli")
+        echo "✓ llama.cpp already built at: $BUILD_DIR/bin/$BINARY"
+        echo "  (To rebuild: FORCE_LLAMACPP_REBUILD=1 or ./setup/build/update_llamacpp.sh)"
+        echo ""
+        exit 0
+    fi
 fi
 
 echo "Building llama.cpp (CPU, vision)..."
