@@ -44,7 +44,7 @@ class ToolParserInterface(ABC):
     """Interface for tool parsing services."""
     
     @abstractmethod
-    def should_transform_tool_calls(self, vllm_sent: bool) -> bool:
+    def should_transform_tool_calls(self, backend_sent_tool_calls: bool) -> bool:
         """Check if tool calls should be transformed."""
         pass
     

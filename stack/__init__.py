@@ -1,1 +1,1 @@
-# Shared config, models, and download for the LLM stack (vLLM, llama, proxy).
+# Shared config, models, and download for the LLM stack (llama-server, proxy).

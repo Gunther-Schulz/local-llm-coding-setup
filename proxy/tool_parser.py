@@ -136,11 +136,11 @@ def parse_qwen_tool_calls(content: str) -> Optional[List[Dict]]:
     return tool_calls if tool_calls else None
 
 
-def should_transform_tool_calls(vllm_sent: bool) -> bool:
-    """Check if we should transform tool calls based on model and vLLM behavior.
+def should_transform_tool_calls(backend_sent_tool_calls: bool) -> bool:
+    """Check if we should transform tool calls based on model and backend behavior.
     Reads MODEL_TOOL_FORMAT at call time so proxy launcher's env is respected."""
-    if vllm_sent:
-        return False  # vLLM already handled it
+    if backend_sent_tool_calls:
+        return False  # Backend already sent tool_calls in stream
     
     fmt = os.getenv("MODEL_TOOL_FORMAT", "openai")
     return fmt in ("qwen2.5", "qwen3", "auto")

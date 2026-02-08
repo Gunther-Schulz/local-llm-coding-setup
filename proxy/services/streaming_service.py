@@ -20,7 +20,7 @@ class StreamingService:
         conversation_id: Optional[str] = None,
     ) -> Generator[str, None, None]:
         """
-        Stream SSE events from vLLM and transform tool calls.
+        Stream SSE events from backend and transform tool calls.
 
         Delegates to proxy.streaming.stream_with_tool_transform.
         """

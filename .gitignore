@@ -1,4 +1,4 @@
-# Local wheel cache (PyTorch, vLLM wheels - download once, reuse across -r)
+# Local wheel cache (download once, reuse across -r)
 .wheels/
 
 # Runtime config (machine-specific)

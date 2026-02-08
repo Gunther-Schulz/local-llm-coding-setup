@@ -1,4 +1,4 @@
-"""Start the configured LLM engine (vLLM or llama.cpp). Uses central config and models."""
+"""Start the LLM backend (llama-server). Uses central config and models."""
 import os
 import sys
 from pathlib import Path
@@ -20,7 +20,6 @@ def _model_from_argv():
 
 
 def main() -> int:
-    engine = config.get_engine()
     model = _model_from_argv() or config.get_current_model()
 
     if not model:
@@ -34,15 +33,8 @@ def main() -> int:
         print(f"\n{e}\nAvailable: " + ", ".join(x["model_key"] for x in models.load_models()) + "\n")
         return 1
 
-    if engine == "vllm":
-        from run.vllm import main as vllm_main
-        return vllm_main()
-    if engine == "llamacpp":
-        from run.llamacpp import main as llamacpp_main
-        return llamacpp_main()
-
-    print(f"\n⚠️  Unknown engine: {engine}. Set LLM_ENGINE=vllm or LLM_ENGINE=llamacpp.\n")
-    return 1
+    from run.llamacpp import main as llamacpp_main
+    return llamacpp_main()
 
 
 if __name__ == "__main__":

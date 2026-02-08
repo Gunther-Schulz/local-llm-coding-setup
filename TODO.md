@@ -6,13 +6,8 @@ In proxy/streaming.py: the branch that, at stream end, parses content and emits 
 In proxy/server.py: any non-streaming path that runs the same “parse content → inject tool_calls” logic.
 The tool-service layer that exists only to support this transformation.
 Do not remove: Anything that adds the virtual tool to the request, or that intercepts and fulfills that tool call and injects its result. That’s separate from “transform raw text → tool_calls.”
-2. Removing vLLM as a backend
-Remove / simplify:
-run/vllm.py, and in run/run (or equivalent) the branch that starts vLLM.
-Engine selection (e.g. run/select_engine.py) if it’s only “vllm | llamacpp”; can become “always llama” or disappear.
-In setup/install.sh: vLLM (and possibly PyTorch) install steps; keep only what llama.cpp needs.
-In config/models.conf: tool_parser (and maybe tool_format) if they were only used for vLLM’s --tool-call-parser; optional to keep for docs or future use.
-Keep: Everything that builds BACKEND_URL and forwards requests to it (proxy doesn’t care whether the backend is vLLM or llama).
+2. ~~Removing vLLM as a backend~~ (done)
+vLLM support removed: run/vllm.py and run/select_engine.py deleted; run/run and run/llm.py use llama-server only; setup/install.sh no longer installs vLLM or PyTorch; config/models.conf tool_parser kept for docs.
 3. Keeping virtual tool injection working
 Virtual tool behavior is independent of:
 the custom transformation (we only stop “parsing text → tool_calls”),
@@ -30,6 +25,6 @@ When you delete transformation/vLLM code, don’t remove or refactor the blocks 
 4. Order of operations when you do it
 Confirm llama-server (your rebuilt binary) returns native tool_calls for your Qwen models and that the proxy already passes them through (no transformation needed).
 Remove the transformation code (parser, stream-end tool emission, non-streaming transform), and any tool_service code that only served that.
-Remove vLLM (run script, engine selection, install, and optional config fields).
+~~Remove vLLM~~ (done).
 After each step, run a flow that uses the virtual tool (e.g. trigger compression, then a turn that calls search_compressed_conversation) and confirm the proxy still injects the tool result and the backend receives it.
 So: yes, you can remove the custom transformation (and vLLM) later; just be careful to keep every part that adds the virtual tool to the request and that runs _inject_virtual_tool_results / execute_virtual_tool and injects the tool message—that’s what keeps the virtual tool working.

@@ -9,7 +9,7 @@ from pathlib import Path
 _ap = argparse.ArgumentParser(description="Start compression proxy server")
 _ap.add_argument("--host", default="0.0.0.0", help="Host to bind to")
 _ap.add_argument("--port", default="8002", help="Port to bind to")
-_ap.add_argument("--vllm-url", default="http://localhost:8000", help="vLLM backend URL")
+_ap.add_argument("--backend-url", default="http://localhost:8000", help="LLM backend URL (llama-server)")
 _ap.add_argument("--vision-url", default="http://localhost:8004", help="Vision API URL")
 _ap.add_argument("-d", "--debug", action="store_true", help="Enable debug mode (or set DEBUG=1 in config/settings.env)")
 _ap.add_argument("-k", "--kill", action="store_true", help="Kill any existing proxy processes before starting")
@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
 # Load config/settings.env first so DEBUG=1 there is respected
 from stack import settings as _stack_settings  # noqa: F401 – loads config/settings.env
-os.environ["VLLM_URL"] = _args.vllm_url
+os.environ["VLLM_URL"] = _args.backend_url
 os.environ["VISION_API_URL"] = _args.vision_url
 # Debug: from -d/--debug or from config/settings.env DEBUG=1
 os.environ["DEBUG"] = "1" if (_args.debug or os.getenv("DEBUG", "0") == "1") else "0"
@@ -53,7 +53,7 @@ def main() -> int:
         print("✓ Done. Proxy stopped.\n")
         return 0
     
-    # Get model context from config (same as vLLM launcher)
+    # Get model context from config (same as llama-server launcher)
     model = config.get_current_model()
     if model:
         try:
@@ -87,7 +87,7 @@ def main() -> int:
     comp = "Cursor-style on overflow" if os.getenv("COMPRESSION_ENABLED", "0") == "1" else "off"
     print(f"\n🚀 Starting Compression Proxy")
     print(f"   Listen:     {args.host}:{args.port}")
-    print(f"   vLLM:       {args.vllm_url}")
+    print(f"   Backend:    {args.backend_url}")
     print(f"   Vision:     {args.vision_url}")
     print(f"   Context:    {effective_ctx} tokens (compression: {comp})")
     debug_on = os.getenv("DEBUG", "0") == "1"

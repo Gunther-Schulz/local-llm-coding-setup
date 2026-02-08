@@ -77,10 +77,10 @@ def main() -> int:
 
     print("═" * 60)
     print(f"  ✅ Model: {m['display_name']}")
-    print(f"  Context: {os.environ.get('VLLM_MAX_LEN')} tokens | Parser: {os.environ.get('VLLM_TOOL_PARSER')} | Format: {os.environ.get('MODEL_TOOL_FORMAT')}")
+    print(f"  Context: {os.environ.get('MODEL_MAX_CONTEXT')} tokens | Extended: {os.environ.get('MODEL_EXTENDED_CONTEXT', '—')} | Format: {os.environ.get('MODEL_TOOL_FORMAT')}")
     print("═" * 60)
-    print("\nStart LLM:   ./run/run llm   (engine from config: ./run/run select engine)")
-    print("Override:    ./run/run llm -m MODEL_KEY   or set LLM_ENGINE=llamacpp\n")
+    print("\nStart LLM:   ./run/run llm")
+    print("Override:    ./run/run llm -m MODEL_KEY\n")
 
     return 0
 

@@ -1,1 +1,1 @@
-"""Compression proxy with vision routing for vLLM backend."""
+"""Compression proxy with vision routing for llama-server backend."""

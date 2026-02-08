@@ -19,7 +19,7 @@ class StreamState:
         self.accumulated_content = ""
         self.finish_reason = None
         self.first_chunk_id = None
-        self.vllm_sent_tool_calls = False
+        self.tool_calls_sent = False
         self.tool_call_count = 0
         self.model_name = model_name
         self.created_time = int(time.time())
@@ -38,7 +38,7 @@ def process_stream_end(
     tool_calls = None
 
     # Try to extract tool calls if we should transform
-    if state.accumulated_content and should_transform_tool_calls(state.vllm_sent_tool_calls):
+    if state.accumulated_content and should_transform_tool_calls(state.tool_calls_sent):
         tool_calls = parse_qwen_tool_calls(state.accumulated_content)
 
         if DEBUG and tool_calls:
@@ -59,7 +59,7 @@ def process_stream_end(
         print(f"[DEBUG] ===== STREAM SUMMARY (request_id: {rid}, conversation_id: {cid}) =====")
         print(f"[DEBUG]   Chunks: {state.chunk_count}")
         print(f"[DEBUG]   Content: {len(state.accumulated_content)} chars")
-        print(f"[DEBUG]   Tool calls: {total_tool_calls} (vLLM: {state.tool_call_count}, parsed: {len(tool_calls) if tool_calls else 0})")
+        print(f"[DEBUG]   Tool calls: {total_tool_calls} (backend: {state.tool_call_count}, parsed: {len(tool_calls) if tool_calls else 0})")
         print(f"[DEBUG]   Finish: {state.finish_reason}")
         print(f"[DEBUG] ==========================")
     
@@ -74,8 +74,8 @@ def stream_with_tool_transform(
     conversation_id: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """
-    Stream SSE events from vLLM and transform tool calls.
-    
+    Stream SSE events from backend and transform tool calls.
+
     This is the main streaming handler that:
     1. Passes through all chunks as-is
     2. Accumulates content for tool call detection
@@ -131,8 +131,8 @@ def stream_with_tool_transform(
                                 state.finish_reason = choice["finish_reason"]
 
                             if "tool_calls" in delta and delta["tool_calls"]:
-                                first_tool_chunk = not state.vllm_sent_tool_calls
-                                state.vllm_sent_tool_calls = True
+                                first_tool_chunk = not state.tool_calls_sent
+                                state.tool_calls_sent = True
                                 n_this = len(delta["tool_calls"])
                                 state.tool_call_count += n_this
                                 if DEBUG and first_tool_chunk:

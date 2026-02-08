@@ -9,7 +9,7 @@ Run the Qwen3-Coder 30B Q4_K_XL (GGUF) long-context benchmark locally with llama
    ```bash
    ./setup/install.sh
    ```
-   (Builds vLLM + llama.cpp vision + CUDA; binaries in `external/llama.cpp/build-cuda/`.)  
+   (Builds llama.cpp vision + CUDA; binaries in `external/llama.cpp/build-cuda/`.)  
    To build only CUDA: `./setup/build/llamacpp_cuda.sh`.
 
 2. **Run benchmark**  
@@ -28,5 +28,5 @@ Same quantization as the Hardware Corner RTX 5090 147K run: Qwen3-Coder-30B-A3B-
 ## Layout
 
 - **external/llama.cpp/** – Single llama.cpp clone (shared by vision and CUDA). Built by `./setup/install.sh`.
-- **external/llama.cpp/build-cuda/** – CUDA build used by this benchmark and by `./run/run llm` when engine=llamacpp.
+- **external/llama.cpp/build-cuda/** – CUDA build used by this benchmark and by `./run/run llm`.
 - **benchmark/** – Scripts and config only (no llama.cpp clone here).

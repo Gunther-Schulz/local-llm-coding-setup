@@ -21,11 +21,11 @@ class ToolService:
         """Initialize tool service."""
         pass
     
-    def should_transform_tool_calls(self, vllm_sent: bool) -> bool:
-        """Check if we should transform tool calls based on model and vLLM behavior.
+    def should_transform_tool_calls(self, backend_sent_tool_calls: bool) -> bool:
+        """Check if we should transform tool calls based on model and backend behavior.
         Reads MODEL_TOOL_FORMAT at call time so proxy launcher's env is respected."""
-        if vllm_sent:
-            return False  # vLLM already handled it
+        if backend_sent_tool_calls:
+            return False  # Backend already sent tool_calls
         
         fmt = os.getenv("MODEL_TOOL_FORMAT", "openai")
         return fmt in ("qwen2.5", "qwen3", "auto")

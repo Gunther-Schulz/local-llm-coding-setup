@@ -1,7 +1,6 @@
 #!/bin/bash
 # Single entry point for run/ – start servers or select config.
-# Usage: ./run/run llm|proxy|vision|select model|engine|vision
-# Engine (vLLM vs llama.cpp) is set via config: ./run/run select engine
+# Usage: ./run/run llm|proxy|vision|select model|vision
 set -e
 
 RUN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,19 +22,18 @@ case "$cmd" in
     shift || true
     case "$sub" in
       model)  exec python -m run.select_model "$@" ;;
-      engine) exec python -m run.select_engine "$@" ;;
       vision) exec python -m run.select_vision_model "$@" ;;
-      *)      echo "Usage: ./run/run select model|engine|vision [args...]" >&2; exit 1 ;;
+      *)      echo "Usage: ./run/run select model|vision [args...]" >&2; exit 1 ;;
     esac ;;
   "")
-    echo "Usage: ./run/run llm|proxy|vision|select model|engine|vision [args...]" >&2
-    echo "  llm     – start LLM backend (engine from config: ./run/run select engine)" >&2
+    echo "Usage: ./run/run llm|proxy|vision|select model|vision [args...]" >&2
+    echo "  llm     – start LLM backend (llama-server)" >&2
     echo "  proxy   – start compression proxy" >&2
     echo "  vision  – start vision API" >&2
-    echo "  select  – select model | engine | vision" >&2
+    echo "  select  – select model | vision" >&2
     exit 1 ;;
   *)
     echo "Unknown command: $cmd" >&2
-    echo "Usage: ./run/run llm|proxy|vision|select model|engine|vision" >&2
+    echo "Usage: ./run/run llm|proxy|vision|select model|vision" >&2
     exit 1 ;;
 esac

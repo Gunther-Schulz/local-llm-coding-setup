@@ -1,7 +1,7 @@
 """
 Central configuration for the entire system.
 
-All configurable settings for vLLM, proxy, and vision are defined here.
+All configurable settings for proxy, vision, and llama-server backend are defined here.
 Can be overridden via environment variables.
 
 Configuration priority (highest to lowest):
@@ -54,7 +54,7 @@ VLLM_HOST = os.getenv("VLLM_HOST", "0.0.0.0")
 VLLM_PORT = int(os.getenv("VLLM_PORT", "8000"))
 VLLM_URL = os.getenv("VLLM_URL", f"http://localhost:{VLLM_PORT}")
 
-# LLM backend URL (vLLM or llama-server); proxy and clients use this
+# LLM backend URL (llama-server); proxy and clients use this
 BACKEND_URL = os.getenv("BACKEND_URL", f"http://localhost:{VLLM_PORT}")
 
 PROXY_HOST = os.getenv("PROXY_HOST", "0.0.0.0")
@@ -63,18 +63,6 @@ PROXY_PORT = int(os.getenv("PROXY_PORT", "8002"))
 VISION_HOST = os.getenv("VISION_HOST", "0.0.0.0")
 VISION_PORT = int(os.getenv("VISION_PORT", "8004"))
 VISION_URL = os.getenv("VISION_API_URL", f"http://localhost:{VISION_PORT}")
-
-
-# ============================================================================
-# vLLM Configuration
-# ============================================================================
-
-VLLM_DTYPE = os.getenv("VLLM_DTYPE", "float16")
-VLLM_CPU_OFFLOAD_GB = os.getenv("VLLM_CPU_OFFLOAD_GB", "8")
-VLLM_TENSOR_PARALLEL = int(os.getenv("VLLM_TENSOR_PARALLEL", "1"))
-
-# CUDA graph mode: "PIECEWISE" (safe on 5090+AMD) or "FULL" (may crash)
-VLLM_CUDAGRAPH_MODE = os.getenv("VLLM_CUDAGRAPH_MODE", "PIECEWISE")
 
 
 # ============================================================================
@@ -238,7 +226,6 @@ def print_config_summary():
     print("Configuration Summary")
     print("=" * 70)
     print(f"Backend:     {BACKEND_URL}")
-    print(f"vLLM:        {VLLM_URL}")
     print(f"Proxy:       {PROXY_HOST}:{PROXY_PORT}")
     print(f"Vision:      {VISION_URL}")
     print(f"Context:     {MODEL_MAX_CONTEXT} tokens")

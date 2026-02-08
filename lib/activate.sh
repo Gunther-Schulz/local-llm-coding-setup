@@ -1,7 +1,7 @@
-# Activate project env: conda "vLLM" or .venv/venv. Source after ROOT is set.
+# Activate project env: conda "runpod" or "vLLM" (legacy) or .venv/venv. Source after ROOT is set.
 # Used by run/run (single entry point).
 #
-# CUDA: FlashInfer (used by vLLM) looks for nvcc via CUDA_HOME. On CachyOS/Arch
+# CUDA: llama.cpp CUDA build looks for nvcc via CUDA_HOME. On CachyOS/Arch
 # the toolkit is in /opt/cuda; on many others it's /usr/local/cuda.
 if [ -z "${CUDA_HOME:-}" ]; then
   if [ -x /opt/cuda/bin/nvcc ]; then
@@ -22,7 +22,11 @@ done
 }
 if [ -n "$_conda_sh" ]; then
   . "$_conda_sh"
-  conda activate vLLM
+  if conda env list | grep -q "^runpod "; then
+    conda activate runpod
+  else
+    conda activate vLLM
+  fi
 elif [ -n "$VIRTUAL_ENV" ]; then
   :
 elif [ -f "$ROOT/.venv/bin/activate" ]; then
@@ -30,6 +34,6 @@ elif [ -f "$ROOT/.venv/bin/activate" ]; then
 elif [ -f "$ROOT/venv/bin/activate" ]; then
   . "$ROOT/venv/bin/activate"
 else
-  echo "ERROR: No conda (env vLLM) or venv. Run: ./setup/install.sh" >&2
+  echo "ERROR: No conda (env runpod or vLLM) or venv. Run: ./setup/install.sh" >&2
   exit 1
 fi
