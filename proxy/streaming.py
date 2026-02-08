@@ -1,15 +1,10 @@
-"""Streaming response handling with tool call transformation."""
+"""Streaming response handling: pass-through from backend (llama-server returns native tool_calls with --jinja)."""
 import json
 import time
 import uuid
 from typing import Generator, Optional
 
 from stack.settings import DEBUG
-from proxy.tool_parser import (
-    parse_qwen_tool_calls,
-    should_transform_tool_calls,
-    generate_tool_call_chunks
-)
 
 
 class StreamState:
@@ -34,36 +29,16 @@ def process_stream_end(
     request_id: Optional[str] = None,
     conversation_id: Optional[str] = None,
 ) -> Generator[str, None, None]:
-    """Process end of stream and send tool calls if needed."""
-    tool_calls = None
-
-    # Try to extract tool calls if we should transform
-    if state.accumulated_content and should_transform_tool_calls(state.tool_calls_sent):
-        tool_calls = parse_qwen_tool_calls(state.accumulated_content)
-
-        if DEBUG and tool_calls:
-            print(f"[DEBUG] Extracted {len(tool_calls)} tool call(s) from stream")
-
-    # Send tool calls if found
-    if tool_calls:
-        yield from generate_tool_call_chunks(
-            tool_calls, state.get_chunk_id(),
-            state.model_name, state.created_time
-        )
-
-    # Log summary
+    """Process end of stream: log and send [DONE]. Backend sends native tool_calls."""
     if DEBUG:
         rid = request_id or "n/a"
         cid = (conversation_id[:12] + "..") if conversation_id and len(conversation_id) > 12 else (conversation_id or "n/a")
-        total_tool_calls = (len(tool_calls) if tool_calls else 0) + state.tool_call_count
         print(f"[DEBUG] ===== STREAM SUMMARY (request_id: {rid}, conversation_id: {cid}) =====")
         print(f"[DEBUG]   Chunks: {state.chunk_count}")
         print(f"[DEBUG]   Content: {len(state.accumulated_content)} chars")
-        print(f"[DEBUG]   Tool calls: {total_tool_calls} (backend: {state.tool_call_count}, parsed: {len(tool_calls) if tool_calls else 0})")
+        print(f"[DEBUG]   Tool calls: {state.tool_call_count}")
         print(f"[DEBUG]   Finish: {state.finish_reason}")
         print(f"[DEBUG] ==========================")
-    
-    # Always send [DONE]
     yield "data: [DONE]\n\n"
 
 
@@ -74,12 +49,7 @@ def stream_with_tool_transform(
     conversation_id: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """
-    Stream SSE events from backend and transform tool calls.
-
-    This is the main streaming handler that:
-    1. Passes through all chunks as-is
-    2. Accumulates content for tool call detection
-    3. At stream end, extracts and sends tool calls if needed
+    Stream SSE events from backend (pass-through). Backend returns native tool_calls with --jinja.
     """
     state = StreamState(model_name)
     rid = request_id or "n/a"
@@ -131,16 +101,8 @@ def stream_with_tool_transform(
                                 state.finish_reason = choice["finish_reason"]
 
                             if "tool_calls" in delta and delta["tool_calls"]:
-                                first_tool_chunk = not state.tool_calls_sent
                                 state.tool_calls_sent = True
-                                n_this = len(delta["tool_calls"])
-                                state.tool_call_count += n_this
-                                if DEBUG and first_tool_chunk:
-                                    print(
-                                        f"[DEBUG] tool_calls stream started (request_id: {rid}, conversation_id: {cid}) "
-                                        f"| backend sends many small chunks; first delta has {n_this} entry(ies); "
-                                        f"total count in STREAM SUMMARY at end"
-                                    )
+                                state.tool_call_count += len(delta["tool_calls"])
 
                             if "content" in delta and delta["content"]:
                                 state.accumulated_content += delta["content"]

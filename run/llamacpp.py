@@ -71,6 +71,7 @@ def main() -> int:
     host = os.environ.get("VLLM_HOST", VLLM_HOST)
     port = os.environ.get("VLLM_PORT", str(VLLM_PORT))
 
+    # --jinja required for OpenAI-style function/tool calling (see docs/function-calling.md)
     argv = [
         str(server_bin),
         "-m", model_path,
@@ -78,6 +79,7 @@ def main() -> int:
         "--host", host,
         "--port", port,
         "--n-gpu-layers", "-1",
+        "--jinja",
     ]
 
     log_dir = root() / "logs"

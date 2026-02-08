@@ -105,7 +105,11 @@ COMPRESSION_SUMMARY_TIMEOUT = int(os.getenv("COMPRESSION_SUMMARY_TIMEOUT", "60")
 # Fuzzy section match: minimum rapidfuzz ratio (0–100) to accept a section line. Used when exact header match fails.
 COMPRESSION_SECTION_FUZZ_RATIO = int(os.getenv("COMPRESSION_SECTION_FUZZ_RATIO", "60"))
 
-# Virtual tool (search_compressed_conversation): max compressed conversations to keep in memory.
+# Virtual tool (search_compressed_conversation): global on/off. When 0, never add the virtual tool.
+# Per-model override: optional column "virtual_tool" in config/models.conf (1/0/empty).
+VIRTUAL_TOOL_ENABLED = os.getenv("VIRTUAL_TOOL_ENABLED", "0") == "1"
+
+# Virtual tool: max compressed conversations to keep in memory.
 # 0 or negative = unlimited (full history). Positive = FIFO eviction after that many.
 COMPRESSED_STORE_MAX_CONVERSATIONS = int(os.getenv("COMPRESSED_STORE_MAX_CONVERSATIONS", "0"))
 # Caps on virtual tool results (0 = no cap / unlimited)
@@ -149,7 +153,7 @@ MODEL_TOOL_FORMAT = os.getenv("MODEL_TOOL_FORMAT", "openai")
 
 # When 1: prepend a short capability reminder to the system message so the model uses
 # conversation context and tools instead of claiming it cannot (recall history, WebSearch, edits).
-INJECT_CAPABILITY_REMINDER = os.getenv("INJECT_CAPABILITY_REMINDER", "1") == "1"
+INJECT_CAPABILITY_REMINDER = os.getenv("INJECT_CAPABILITY_REMINDER", "0") == "1"
 
 _CAPABILITY_REMINDER_DEFAULT = (
     "\n\n<capability_reminder>\n"

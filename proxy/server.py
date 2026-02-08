@@ -1,4 +1,4 @@
-"""Compression proxy server with vision routing and tool call transformation."""
+"""Compression proxy server with vision routing. Backend (llama-server with --jinja) returns native tool_calls."""
 import json
 import time
 import traceback
@@ -22,7 +22,9 @@ from stack.settings import (
     SYSTEM_MESSAGE_TEXT,
     INJECT_CAPABILITY_REMINDER,
     CAPABILITY_REMINDER_TEXT,
+    VIRTUAL_TOOL_ENABLED,
 )
+from stack.models import get_model_proxy_flags
 from proxy.utils import total_tokens, extract_text_from_content, get_conversation_id
 from proxy.context_manager import (
     get_stored,
@@ -114,11 +116,12 @@ streaming_service = service_manager.streaming_service
 
 @app.on_event("startup")
 async def startup_log():
-    """Log proxy config when DEBUG so logs show what is active."""
+    """Log proxy config when DEBUG so logs show what is active (global defaults; per-model overrides in models.conf)."""
     if DEBUG:
         ctx = get_effective_context_limit()
         comp = "cursor_style_on_overflow" if COMPRESSION_ENABLED else "off"
-        print(f"[DEBUG] Proxy config: backend={BACKEND_URL}, context_limit={ctx}, compression={comp}")
+        vt = "on" if VIRTUAL_TOOL_ENABLED else "off"
+        print(f"[DEBUG] Proxy config: backend={BACKEND_URL}, context_limit={ctx}, compression={comp}, virtual_tool={vt}")
         if INJECT_SYSTEM_MESSAGE:
             if SYSTEM_MESSAGE_TEXT:
                 print(f"[DEBUG] System message injection: on (from config)")
@@ -199,6 +202,13 @@ async def chat_completions_no_v1(request: Request):
 async def handle_chat_completions(request: ChatCompletionRequest, request_id: Optional[str] = None):
     """Main handler for chat completions."""
     _t0 = time.perf_counter()
+    # Per-model proxy flags (from config/models.conf optional columns); None = use global
+    model_flags = get_model_proxy_flags(request.model or "")
+    effective_compression = model_flags.get("compression") if model_flags.get("compression") is not None else COMPRESSION_ENABLED
+    effective_virtual_tool = (model_flags.get("virtual_tool") if model_flags.get("virtual_tool") is not None else VIRTUAL_TOOL_ENABLED) and VIRTUAL_TOOL_ENABLED
+    effective_inject_system = model_flags.get("inject_system") if model_flags.get("inject_system") is not None else INJECT_SYSTEM_MESSAGE
+    effective_inject_capability = model_flags.get("inject_capability") if model_flags.get("inject_capability") is not None else INJECT_CAPABILITY_REMINDER
+
     # Convert to dicts, preserving tool_calls and tool_call_id for multi-turn tool use
     incoming_messages = []
     for msg in request.messages:
@@ -255,10 +265,10 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
                         text_parts.append(item.get("text", ""))
                 incoming_messages[i]["content"] = " ".join(text_parts)
     
-    # Cursor-style compression: when COMPRESSION_ENABLED, condense tool responses then compress on overflow only.
+    # Cursor-style compression: when effective_compression, condense tool responses then compress on overflow only.
     tokens_before_condense = total_tokens(incoming_messages, request.tools)
     BACKEND_CTX_LIMIT = get_effective_context_limit()
-    if COMPRESSION_ENABLED:
+    if effective_compression:
         incoming_messages = context_service.condense_tool_responses_with_context(incoming_messages)
     tool_responses_condensed = sum(1 for m in incoming_messages if m.get("_full_content_length") is not None)
     tokens_after_condense = total_tokens(incoming_messages, request.tools)
@@ -278,7 +288,7 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
     MIN_MAX_TOKENS = 64
     if effective_max_tokens < MIN_MAX_TOKENS and max_completion_allowed < MIN_MAX_TOKENS:
         # Would return 413: try Cursor-style compression if enabled
-        if COMPRESSION_ENABLED:
+        if effective_compression:
             if DEBUG:
                 print(f"[DEBUG] Prompt over limit ({prompt_tokens}), applying Cursor-style compression")
             final_messages = await context_service.compress_cursor_style(
@@ -321,9 +331,9 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         print(f"[DEBUG]   context_limit: {BACKEND_CTX_LIMIT}, max_completion_available: {max_completion_allowed}, max_tokens_sent: {effective_max_tokens}")
         print("[DEBUG] --------------------------")
 
-    # Virtual tool: if last message is assistant with tool_calls including search_compressed_conversation
+    # Virtual tool: if enabled and last message is assistant with tool_calls including search_compressed_conversation
     # and no result for it, execute and inject the tool result so the backend sees it.
-    final_messages, virtual_injected = _inject_virtual_tool_results(final_messages, conversation_id)
+    final_messages, virtual_injected = _inject_virtual_tool_results(final_messages, conversation_id) if effective_virtual_tool else (final_messages, False)
     if virtual_injected and DEBUG:
         print(f"[DEBUG] Injected virtual tool result for conversation_id={conversation_id[:12]}...")
 
@@ -347,18 +357,16 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         cleaned_messages.append(cleaned)
 
     # Optional: inject Cursor-style system message when using clients that don't send one (e.g. Continue).
-    # When INJECT_SYSTEM_MESSAGE=0 (default for Cursor Cloud), leave messages as-is to avoid duplication.
-    if INJECT_SYSTEM_MESSAGE and SYSTEM_MESSAGE_TEXT:
+    if effective_inject_system and SYSTEM_MESSAGE_TEXT:
         if cleaned_messages and cleaned_messages[0].get("role") == "system":
             cleaned_messages[0]["content"] = SYSTEM_MESSAGE_TEXT
         else:
             cleaned_messages.insert(0, {"role": "system", "content": SYSTEM_MESSAGE_TEXT})
 
     # Optional: remind model it has conversation context and tools (reduces "I can't recall" / "I can't search" / "I'll just advise")
-    # Include when client sent tools or we will add the virtual tool (stored compressed conversation)
     if (
-        INJECT_CAPABILITY_REMINDER
-        and (request.tools or get_stored(conversation_id))
+        effective_inject_capability
+        and (request.tools or (effective_virtual_tool and get_stored(conversation_id)))
         and cleaned_messages
         and cleaned_messages[0].get("role") == "system"
     ):
@@ -383,15 +391,15 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
         backend_request["stop"] = request.stop
     if request.tools is not None:
         tools_list = list(request.tools)
-        # When we have stored compressed conversation, add virtual tool so the model can query it
-        if get_stored(conversation_id) and not any(
+        # When virtual tool enabled and we have stored compressed conversation, add virtual tool so the model can query it
+        if effective_virtual_tool and get_stored(conversation_id) and not any(
             t.get("function", {}).get("name") == VIRTUAL_TOOL_NAME
             for t in tools_list
             if isinstance(t, dict) and t.get("type") == "function"
         ):
             tools_list.append(VIRTUAL_TOOL_DEFINITION)
         backend_request["tools"] = tools_list
-    elif get_stored(conversation_id):
+    elif effective_virtual_tool and get_stored(conversation_id):
         backend_request["tools"] = [VIRTUAL_TOOL_DEFINITION]
         backend_request["tool_choice"] = "auto"
     if request.tool_choice is not None and "tool_choice" not in backend_request:
@@ -447,9 +455,7 @@ async def handle_chat_completions(request: ChatCompletionRequest, request_id: Op
                     headers={"Content-Type": "application/json"}
                 )
                 backend_response.raise_for_status()
-                # Transform tool calls if needed
                 response_data = backend_response.json()
-                response_data = service_manager.tool_service.transform_qwen_response(response_data)
                 if DEBUG:
                     print(f"[DEBUG] Request {request_id or 'n/a'} completed in {round((time.perf_counter() - _t0) * 1000)} ms (non-streaming)")
                 return response_data

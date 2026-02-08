@@ -1,5 +1,5 @@
 Here’s a concise plan for when you do it later.
-1. Removing the custom tool-call transformation
+1. ~~Removing the custom tool-call transformation~~ (done)
 Safe to remove (once llama-server is your only backend and you’ve confirmed it returns native tool_calls for Qwen):
 proxy/tool_parser.py: parse_qwen_tool_calls, should_transform_tool_calls, generate_tool_call_chunks, and any “transform response” helpers.
 In proxy/streaming.py: the branch that, at stream end, parses content and emits tool-call chunks when the backend didn’t send tool_calls (and the state used only for that).
@@ -23,8 +23,7 @@ Context manager
 store_compressed, get_stored, execute_virtual_tool, and the virtual tool name/definition in proxy/context_manager.py.
 When you delete transformation/vLLM code, don’t remove or refactor the blocks that do the above four things; treat “virtual tool injection” as a separate feature that stays.
 4. Order of operations when you do it
-Confirm llama-server (your rebuilt binary) returns native tool_calls for your Qwen models and that the proxy already passes them through (no transformation needed).
-Remove the transformation code (parser, stream-end tool emission, non-streaming transform), and any tool_service code that only served that.
+~~Confirm llama-server returns native tool_calls~~ (done; --jinja enabled). ~~Remove the transformation code~~ (done).
 ~~Remove vLLM~~ (done).
 After each step, run a flow that uses the virtual tool (e.g. trigger compression, then a turn that calls search_compressed_conversation) and confirm the proxy still injects the tool result and the backend receives it.
 So: yes, you can remove the custom transformation (and vLLM) later; just be careful to keep every part that adds the virtual tool to the request and that runs _inject_virtual_tool_results / execute_virtual_tool and injects the tool message—that’s what keeps the virtual tool working.
