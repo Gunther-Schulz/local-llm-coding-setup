@@ -42,8 +42,29 @@ def _load_env_file():
                     os.environ[key] = value
 
 
-# Load config file first (before defining settings)
+def _load_llamacpp_env():
+    """Load llama-server settings from config/llamacpp.env if it exists."""
+    current = Path(__file__).resolve()
+    root_path = current.parents[1]
+    env_file = root_path / "config" / "llamacpp.env"
+    if not env_file.exists():
+        return
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if key and key not in os.environ:
+                    os.environ[key] = value
+
+
+# Load config files first (before defining settings)
 _load_env_file()
+_load_llamacpp_env()
 
 
 # ============================================================================
@@ -195,6 +216,16 @@ LLAMACPP_BIN = os.getenv("LLAMACPP_BIN", "./external/llama.cpp/build/bin/llama-m
 
 # llama-server for LLM engine (when LLM_ENGINE=llamacpp); CUDA build in external/llama.cpp/build-cuda
 LLAMACPP_SERVER_BIN = os.getenv("LLAMACPP_SERVER_BIN", "./external/llama.cpp/build-cuda/bin/llama-server")
+
+# llama-server options (from config/llamacpp.env; per-model override in models.conf)
+FIT_CONTEXT = os.getenv("FIT_CONTEXT", "0") == "1"
+CACHE_TYPE_K = os.getenv("CACHE_TYPE_K", "").strip() or None
+MOE_OFFLOAD_REGEX = os.getenv("MOE_OFFLOAD_REGEX", "").strip() or None
+LLAMACPP_TEMP = os.getenv("LLAMACPP_TEMP", "").strip() or None
+LLAMACPP_TOP_P = os.getenv("LLAMACPP_TOP_P", "").strip() or None
+LLAMACPP_TOP_K = os.getenv("LLAMACPP_TOP_K", "").strip() or None
+LLAMACPP_MIN_P = os.getenv("LLAMACPP_MIN_P", "").strip() or None
+LLAMACPP_SEED = os.getenv("LLAMACPP_SEED", "").strip() or None
 
 
 # ============================================================================

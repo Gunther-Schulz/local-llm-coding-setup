@@ -5,6 +5,7 @@
 config/llm-config
 config/config.conf
 config/settings.env
+config/llamacpp.env
 
 # Logs
 logs/

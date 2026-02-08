@@ -3,7 +3,7 @@ from pathlib import Path
 from .paths import root
 
 MODELS_CONF = "config/models.conf"
-# Format: 10 cols required; optional cols 11-14: compression, virtual_tool, inject_system, inject_capability (1/0/empty)
+# Format: 10 cols required; optional cols 11-14: proxy flags; optional cols 15-17: fit_context, cache_type_k, moe_offload
 
 def _path() -> Path:
     return root() / MODELS_CONF
@@ -46,6 +46,17 @@ def _parse_line(line: str) -> dict | None:
         d["virtual_tool"] = None
         d["inject_system"] = None
         d["inject_capability"] = None
+    # Optional per-model llama-server (cols 15-17): fit_context, cache_type_k, moe_offload
+    if len(parts) >= 17:
+        d["fit_context"] = _parse_optional_bool(parts[14])
+        ck = (parts[15] or "").strip()
+        d["cache_type_k"] = ck if ck and ck != "-" else None
+        moe_s = (parts[16] or "").strip()
+        d["moe_offload"] = moe_s if moe_s and moe_s != "-" else None
+    else:
+        d["fit_context"] = None
+        d["cache_type_k"] = None
+        d["moe_offload"] = None
     return d
 
 def load_models() -> list[dict]:
@@ -79,6 +90,23 @@ def get_model_proxy_flags(model_key: str) -> dict:
         "virtual_tool": m.get("virtual_tool"),
         "inject_system": m.get("inject_system"),
         "inject_capability": m.get("inject_capability"),
+    }
+
+
+def get_model_llamacpp_config(model_key: str) -> dict:
+    """
+    Return per-model llama-server options for the given model_key.
+    Keys: fit_context (bool|None), cache_type_k (str|None), moe_offload (str|None).
+    Values: None = use global from config/llamacpp.env.
+    moe_offload "moe" maps to full MoE regex ".ffn_.*_exps.=CPU" in launcher.
+    """
+    m = get_model_config(model_key)
+    if not m:
+        return {}
+    return {
+        "fit_context": m.get("fit_context"),
+        "cache_type_k": m.get("cache_type_k"),
+        "moe_offload": m.get("moe_offload"),
     }
 
 

@@ -12,7 +12,19 @@ if __name__ == "__main__":
 
 from stack import config, models
 from stack.paths import root
-from stack.settings import VLLM_HOST, VLLM_PORT, LLAMACPP_SERVER_BIN
+from stack.settings import (
+    VLLM_HOST,
+    VLLM_PORT,
+    LLAMACPP_SERVER_BIN,
+    FIT_CONTEXT,
+    CACHE_TYPE_K,
+    MOE_OFFLOAD_REGEX,
+    LLAMACPP_TEMP,
+    LLAMACPP_TOP_P,
+    LLAMACPP_TOP_K,
+    LLAMACPP_MIN_P,
+    LLAMACPP_SEED,
+)
 
 _process = None
 
@@ -59,6 +71,21 @@ def main() -> int:
     ext_ctx = os.environ.get("MODEL_EXTENDED_CONTEXT")
     max_ctx = int(ext_ctx) if (extended and ext_ctx) else int(os.environ.get("MODEL_MAX_CONTEXT", "32768"))
 
+    # Per-model llama-server options (from models.conf cols 15–17) else config/llamacpp.env
+    llm_cfg = models.get_model_llamacpp_config(model)
+    fit = llm_cfg.get("fit_context") if llm_cfg.get("fit_context") is not None else FIT_CONTEXT
+    cache_k = llm_cfg.get("cache_type_k") or CACHE_TYPE_K
+    moe_off = llm_cfg.get("moe_offload")
+    if moe_off == "moe":
+        moe_regex = ".ffn_.*_exps.=CPU"
+    else:
+        moe_regex = (moe_off or MOE_OFFLOAD_REGEX) if moe_off else MOE_OFFLOAD_REGEX
+    temp = LLAMACPP_TEMP
+    top_p = LLAMACPP_TOP_P
+    top_k = LLAMACPP_TOP_K
+    min_p = LLAMACPP_MIN_P
+    seed = LLAMACPP_SEED
+
     server_bin = Path(LLAMACPP_SERVER_BIN)
     if not server_bin.is_absolute():
         server_bin = (root() / LLAMACPP_SERVER_BIN).resolve()
@@ -72,15 +99,26 @@ def main() -> int:
     port = os.environ.get("VLLM_PORT", str(VLLM_PORT))
 
     # --jinja required for OpenAI-style function/tool calling (see docs/function-calling.md)
-    argv = [
-        str(server_bin),
-        "-m", model_path,
-        "-c", str(max_ctx),
-        "--host", host,
-        "--port", port,
-        "--n-gpu-layers", "-1",
-        "--jinja",
-    ]
+    argv = [str(server_bin), "-m", model_path, "--host", host, "--port", port, "--n-gpu-layers", "-1", "--jinja"]
+    if fit:
+        argv.append("--fit")
+        argv.append("on")
+    else:
+        argv.extend(["-c", str(max_ctx)])
+    if cache_k:
+        argv.extend(["--cache-type-k", cache_k])
+    if moe_regex:
+        argv.extend(["-ot", moe_regex])
+    if temp:
+        argv.extend(["--temp", temp])
+    if top_p:
+        argv.extend(["--top-p", top_p])
+    if top_k:
+        argv.extend(["--top-k", top_k])
+    if min_p:
+        argv.extend(["--min-p", min_p])
+    if seed:
+        argv.extend(["--seed", seed])
 
     log_dir = root() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -88,7 +126,7 @@ def main() -> int:
     log_file.write_text("")
 
     print(f"Model: {m['display_name']}")
-    print(f"Context: {max_ctx} tokens")
+    print(f"Context: {'fit on' if fit else f'{max_ctx} tokens'}")
     print(f"Backend: http://{host}:{port}")
     print(f"Logs: {log_file}\n")
 
