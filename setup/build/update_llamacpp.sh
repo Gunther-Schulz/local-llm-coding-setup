@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Update llama.cpp to latest master and rebuild (vision + CUDA).
 # Usage: ./setup/build/update_llamacpp.sh
-# Optional: LLAMACPP_UPDATE_VISION=0 or LLAMACPP_UPDATE_CUDA=0 to skip one build.
+# Optional: LLAMACPP_UPDATE_VISION=0 or LLAMACPP_UPDATE_CUDA=0 (Fish: env VAR=value ./update_llamacpp.sh)
 set -e
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

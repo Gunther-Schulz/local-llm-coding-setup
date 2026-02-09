@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Download vision model files (GGUF + MMProj)
 set -e
 

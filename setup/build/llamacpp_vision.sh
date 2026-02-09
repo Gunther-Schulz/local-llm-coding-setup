@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Build llama.cpp (CPU) for vision API. Invoked by setup/install.sh; not meant to be run directly.
 set -e
 

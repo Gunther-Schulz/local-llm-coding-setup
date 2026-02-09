@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Clean install for runpod (llama-server + proxy). Run from project root.
 #
 # Prerequisites: conda

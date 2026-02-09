@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Run Hardware Corner–style benchmark: llama-bench with their exact methodology
 # (Flash Attention, context depths, PP 1024 / TG 128, all layers on GPU)
+# Optional: BENCHMARK_MODEL=... BENCHMARK_DEPTHS=... (Fish: use env BENCHMARK_MODEL=... ./run_benchmark.sh)
 set -e
 
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Build llama.cpp (CUDA) for LLM engine and benchmarks. Invoked by setup/install.sh; not meant to be run directly.
 set -e
 
