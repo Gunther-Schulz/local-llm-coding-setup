@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a long prompt by concatenating project files (proxy/ + stack/) for long-context benchmark.
+# Build a long prompt by concatenating project files (proxy/ + stack/ + external/llama.cpp) for long-context benchmark.
 # Output to stdout; optional MAX_CHARS to cap size (~4 chars per token rough).
 # Usage: ./fill_context.sh [MAX_CHARS]
 # Example: ./fill_context.sh 100000 > long_prompt.txt  # ~25k tokens
@@ -29,6 +29,6 @@ while IFS= read -r -d '' f; do
   fi
   buf+="$block"
   total=${#buf}
-done < <(find "$ROOT/proxy" "$ROOT/stack" -type f \( -name "*.py" -o -name "*.sh" \) -print0 2>/dev/null | sort -z)
+done < <(find "$ROOT/proxy" "$ROOT/stack" "$ROOT/external/llama.cpp" -type f \( -name "*.py" -o -name "*.sh" -o -name "*.c" -o -name "*.cpp" -o -name "*.h" \) -print0 2>/dev/null | sort -z)
 
 echo -n "$buf"

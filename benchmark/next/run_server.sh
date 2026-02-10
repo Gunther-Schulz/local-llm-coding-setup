@@ -77,10 +77,11 @@ else
   N_GPU_LAYERS="${N_GPU_LAYERS:--1}"
 fi
 argv=("$LLAMA_SERVER" -m "$full_path" --host "127.0.0.1" --port "$PORT" --n-gpu-layers "$N_GPU_LAYERS" --jinja)
-# Context: fixed for benchmark (avoid --fit so we compare same -c)
-argv+=(-c "32768")
+# Context: default 32K. Override for 128K: BENCHMARK_CTX=131072
+ctx="${BENCHMARK_CTX:-32768}"
+argv+=(-c "$ctx")
 [[ -n "$moe_ot" ]] && argv+=(-ot "$moe_ot")
 [[ -n "$cache_k" ]] && argv+=(--cache-type-k "$cache_k")
 
-echo "Scenario: $SCENARIO | port $PORT | n_gpu_layers=$N_GPU_LAYERS | model $full_path"
+echo "Scenario: $SCENARIO | port $PORT | ctx=$ctx | n_gpu_layers=$N_GPU_LAYERS | model $full_path"
 exec "${argv[@]}"

@@ -2,7 +2,6 @@
 
 from .context_service import ContextService
 from .vision_service import VisionService
-from .tool_service import ToolService
 from .streaming_service import StreamingService
 
 # Service manager to provide single point of access
@@ -12,7 +11,6 @@ class ServiceManager:
     def __init__(self):
         self._context_service = None
         self._vision_service = None
-        self._tool_service = None
         self._streaming_service = None
     
     @property
@@ -26,12 +24,6 @@ class ServiceManager:
         if self._vision_service is None:
             self._vision_service = VisionService()
         return self._vision_service
-    
-    @property
-    def tool_service(self):
-        if self._tool_service is None:
-            self._tool_service = ToolService()
-        return self._tool_service
     
     @property
     def streaming_service(self):

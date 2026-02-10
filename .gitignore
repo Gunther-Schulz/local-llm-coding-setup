@@ -20,6 +20,7 @@ external/
 
 # Benchmark run results (overwritten each run)
 benchmark/next/results.txt
+benchmark/next/.server_log.txt
 
 # Obsolete: llama.cpp clone used to live here; now in external/llama.cpp
 benchmark/llama.cpp/

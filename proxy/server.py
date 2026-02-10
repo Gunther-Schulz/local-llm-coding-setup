@@ -34,12 +34,10 @@ from proxy.context_manager import (
 )
 from proxy.services.context_service import ContextService
 from proxy.services.vision_service import VisionService
-from proxy.services.tool_service import ToolService
 from proxy.services.streaming_service import StreamingService
 from proxy.services.interfaces import (
     ContextManagerInterface,
     VisionRouterInterface,
-    ToolParserInterface,
     StreamingHandlerInterface
 )
 
@@ -110,7 +108,6 @@ from proxy.services import service_manager
 # Initialize services via service manager
 context_service = service_manager.context_service
 vision_service = service_manager.vision_service
-tool_service = service_manager.tool_service
 streaming_service = service_manager.streaming_service
 
 
