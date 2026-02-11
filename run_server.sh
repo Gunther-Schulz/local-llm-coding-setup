@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Start llama-server. Config: config/server.env (active model) + config/models/<key>.env (per-model options).
-# Usage: ./run_server.sh [PORT]
+# Start llama-server. Config: config/server.env (ACTIVE_MODEL) + config/models/<key>.yaml.
+# Usage: ./run_server.sh [MODEL_KEY] [PORT]
+#   MODEL_KEY = override ACTIVE_MODEL (e.g. qwen3-coder-next-mxfp4). Optional; else from config/server.env.
+#   PORT      = override port. Optional; else from config/server.env.
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-# Load active model and server options
+# Load server options
 if [[ ! -f "$ROOT/config/server.env" ]]; then
   echo "Config not found: config/server.env" >&2
   exit 1
@@ -13,21 +15,25 @@ fi
 set -a
 source "$ROOT/config/server.env"
 set +a
+# Optional argv: first arg = model key or port; second = port if first is model key
+if [[ -n "$1" ]]; then
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    PORT="$1"
+  else
+    ACTIVE_MODEL="$1"
+    [[ -n "$2" ]] && PORT="$2"
+  fi
+fi
 if [[ -z "$ACTIVE_MODEL" ]]; then
-  echo "ACTIVE_MODEL not set in config/server.env" >&2
+  echo "ACTIVE_MODEL not set in config/server.env and no MODEL_KEY given." >&2
+  echo "Usage: ./run_server.sh [MODEL_KEY] [PORT]" >&2
   exit 1
 fi
-# Port: argv overrides config
-[[ -n "$1" ]] && PORT="$1"
+echo "Loading model: $ACTIVE_MODEL (stop any server on port ${PORT:-8000} first)"
 
-# Load per-model options
-MODEL_ENV="$ROOT/config/models/${ACTIVE_MODEL}.env"
-if [[ ! -f "$MODEL_ENV" ]]; then
-  echo "Model config not found: $MODEL_ENV" >&2
-  exit 1
-fi
+# Load per-model config (YAML -> env)
 set -a
-source "$MODEL_ENV"
+eval "$("$ROOT/scripts/load_model_config.sh" "$ACTIVE_MODEL")"
 set +a
 
 # Resolve model path

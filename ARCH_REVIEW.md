@@ -33,6 +33,44 @@
 
 ---
 
+## GAP: WHY CHECKLIST-ONLY ANALYSIS MISSES REAL BUGS
+
+**Observed failure:** Multiple analysis cycles can complete with "architecture good" while **real bugs** (dead code, unvalidated input, wrong parsing) stay undiscovered until the user prompts to "look for more." The protocol then finds them quickly. So the workflow is biased toward **pattern compliance** (does the codebase match the categories?) and **breadth** (new areas per cycle), and away from **correctness** (does this code path run? is this input validated? does parsing match the schema?).
+
+**Root causes:**
+
+1. **Breadth over depth.** "Explore NEW areas" is interpreted as add new *components* each cycle. Analysts move on instead of staying in one component to trace execution paths, follow config keys to their use, or audit one parser against its file format.
+
+2. **Checklist shapes what is searched for.** Violations are framed as C1.6 (duplication), C2.1 (error handling), etc. Bugs like "method never called," "config key ignored," "header not validated," "parse assumes wrong number of columns" do not map cleanly to a single category, so they are not systematically searched for.
+
+3. **No mandatory "contract vs reality" checks.** The protocol verifies that patterns *exist* (e.g. error handling present, config loaded). It does not require: for each **config key** → find code that **reads** it; for each **public or important method** → find **call sites**; for each **external input** (headers, body, file format) → confirm it is **validated** or **parsed** in line with the documented schema.
+
+4. **Verification is "read 2–3 components."** That confirms cross-component consistency (e.g. same style of error handling). It does not confirm "this function is ever invoked" or "this branch is reachable" or "this parser handles all columns."
+
+5. **Output rules (no snippets, concise tracker)** reward summarising findings. They do not force the analyst to ask one more question: "Where is X called?" or "What if this value is negative?"
+
+**Therefore:** To find the kind of bugs that were missed (e.g. `reset_turn` never called, Content-Length not validated, scenario parsing wrong column count), the protocol must **explicitly require** behavior and correctness audits, not only checklist coverage.
+
+---
+
+## MANDATORY: BEHAVIOR AND CORRECTNESS AUDIT (A1.1)
+
+**When:** During A1.1 ANALYZE. At least one full pass of these checks must be done (e.g. one cycle dedicated to it, or one item per cycle until done). Do not rely on checklist categories alone to surface dead code, unused config, or parse/schema mismatches.
+
+**Required checks (grep/read_file as needed):**
+
+1. **Config → code.** For each significant config section or key (e.g. `turn_tracking.auto_reset_turn`, `read_coalescing.max_reads_per_turn`), find where it is **read** and **used**. If a key is never read, or is read but no code path uses it to change behavior, document as [VERIFIED] bug: unused/ignored config.
+
+2. **Public / important methods → call sites.** For methods that are part of the component’s contract (e.g. `reset_turn`, handlers, “main” entry points), search for **call sites**. If a method is never called, document as [VERIFIED] bug: dead code or missing integration.
+
+3. **External input boundaries.** For each place that reads external input (HTTP headers, request body, env, config files, or structured files like scenarios.cfg), confirm: (a) **Validation:** type and range (e.g. Content-Length non-negative, capped); (b) **Parse vs schema:** number and meaning of columns/fields matches the documented or implied schema (e.g. 6-column scenario line parsed with 4 variables = bug). Document missing validation or schema mismatch as [VERIFIED] bugs.
+
+4. **One depth pass per area.** For at least one component per cycle, do a **depth** pass: pick one behavior (e.g. "read coalescing," "turn reset," "scenario launch"), trace from config/entry point to all code paths that implement it, and verify they are connected (no missing calls, no wrong arguments). Document any disconnect as a bug.
+
+**Tracker:** Add findings from these checks to the same tracker (ARCHITECTURAL ISSUES / FINDINGS). Label them so they are visible as **correctness/behavior** issues (e.g. "dead code", "unused config", "input validation", "parse/schema mismatch"). Fix strategy remains as in the rest of the protocol.
+
+---
+
 ## A1 - WORKFLOW
 
 ### A1.1 ANALYZE
@@ -103,7 +141,10 @@ FOR each analysis cycle:
    - **CRITICAL:** Each violation is separate - document C1.4, C1.5, C1.6, C2.1, C2.2, S1.1, O1.2, etc. as distinct findings even if they seem related
    - **CRITICAL:** Do not skip documenting violations because they seem "secondary" or will be "fixed by larger changes" - all violations must be tracked
 
-5. **Verify comprehensive checklist coverage:**
+5. **Run behavior and correctness audit (see "MANDATORY: BEHAVIOR AND CORRECTNESS AUDIT" above):**
+   - At least one full pass across the codebase: config→code use, method→call sites, input validation, parse/schema alignment, and one depth pass per area. Do not rely on checklist alone to find dead code, unused config, or wrong parsing.
+
+6. **Verify comprehensive checklist coverage:**
    - Before ending analysis cycle, systematically verify all relevant C1/C2/C3/P1 categories were checked
    - For each category relevant to analysis scope:
      - [ ] Checked for violations in this category?
