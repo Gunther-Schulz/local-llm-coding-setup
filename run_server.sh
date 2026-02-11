@@ -4,9 +4,8 @@
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
-PORT="${1:-8000}"
 
-# Load active model
+# Load active model and server options
 if [[ ! -f "$ROOT/config/server.env" ]]; then
   echo "Config not found: config/server.env" >&2
   exit 1
@@ -18,6 +17,8 @@ if [[ -z "$ACTIVE_MODEL" ]]; then
   echo "ACTIVE_MODEL not set in config/server.env" >&2
   exit 1
 fi
+# Port: argv overrides config
+[[ -n "$1" ]] && PORT="$1"
 
 # Load per-model options
 MODEL_ENV="$ROOT/config/models/${ACTIVE_MODEL}.env"
@@ -43,11 +44,13 @@ if [[ "$LLAMA_SERVER" != /* ]]; then
 fi
 if [[ ! -x "$LLAMA_SERVER" ]]; then
   echo "llama-server not found: $LLAMA_SERVER" >&2
+  echo "Run: ./setup/install.sh  or  ./setup/build/llamacpp_cuda.sh" >&2
   exit 1
 fi
 
-# Build argv
-argv=(-m "$MODEL_PATH" --host "127.0.0.1" --port "$PORT" --n-gpu-layers -1 --jinja -c "${CONTEXT_SIZE:-262144}")
+# Build argv (host, port, n_gpu_layers, jinja from config)
+argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT:-8000}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
+[[ "${JINJA:-1}" =~ ^(1|true|on|yes)$ ]] && argv+=(--jinja)
 [[ -n "$TEMP" ]]    && argv+=(--temp "$TEMP")
 [[ -n "$TOP_P" ]]   && argv+=(--top-p "$TOP_P")
 [[ -n "$TOP_K" ]]   && argv+=(--top-k "$TOP_K")
@@ -56,6 +59,6 @@ argv=(-m "$MODEL_PATH" --host "127.0.0.1" --port "$PORT" --n-gpu-layers -1 --jin
 [[ -n "$BATCH_SIZE" ]]  && argv+=(--batch-size "$BATCH_SIZE")
 [[ -n "$UBATCH_SIZE" ]] && argv+=(--ubatch-size "$UBATCH_SIZE")
 
-echo "port=$PORT ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")"
-echo "API: http://127.0.0.1:$PORT/v1"
+echo "port=${PORT:-8000} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")"
+echo "API: http://${HOST:-127.0.0.1}:${PORT:-8000}/v1"
 exec "$LLAMA_SERVER" "${argv[@]}"

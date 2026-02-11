@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build llama.cpp (CUDA) for LLM engine and benchmarks. Invoked by setup/install.sh; not meant to be run directly.
+# Build llama.cpp (CUDA) for LLM server and benchmarks.
+# Invoked by setup/install.sh or setup/build/update_llamacpp.sh.
 set -e
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -26,30 +27,30 @@ if [ -z "$NVCC" ] || [ ! -x "$NVCC" ]; then
 fi
 
 echo "════════════════════════════════════════════════════════════════"
-echo "  Building llama.cpp (CUDA) for LLM engine & benchmarks"
+echo "  Building llama.cpp (CUDA) for LLM server & benchmarks"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 echo "Using CUDA_HOME=$CUDA_HOME"
 echo ""
 
-# Clone llama.cpp if needed (shared with vision build)
+# Clone llama.cpp if needed
 if [ ! -d "$LLAMACPP_DIR" ]; then
   echo "Cloning llama.cpp..."
   mkdir -p external
-  git clone https://github.com/ggerganov/llama.cpp.git "$LLAMACPP_DIR"
+  git clone https://github.com/ggml-org/llama.cpp.git "$LLAMACPP_DIR"
   echo "✓ Cloned llama.cpp"
   echo ""
 else
   echo "✓ llama.cpp already at $LLAMACPP_DIR"
-  echo "  Pulling latest (for native tool-call parsing, e.g. Qwen3 Coder)..."
+  echo "  Pulling latest (tool-call grammar fixes, etc.)..."
   (cd "$LLAMACPP_DIR" && git fetch origin && git checkout master 2>/dev/null; git pull origin master 2>/dev/null) || true
   echo ""
 fi
 
-# Check if already built (skip unless FORCE_LLAMACPP_REBUILD=1)
-if [ -z "$FORCE_LLAMACPP_REBUILD" ] && [ -x "$BUILD_DIR/bin/llama-server" ] && [ -x "$BUILD_DIR/bin/llama-bench" ]; then
+# Skip build if binaries exist (unless FORCE_LLAMACPP_REBUILD=1)
+if [ -z "$FORCE_LLAMACPP_REBUILD" ] && [ -x "$BUILD_DIR/bin/llama-server" ]; then
   echo "✓ CUDA build already present: $BUILD_DIR/bin/"
-  echo "  (To get native tool-call parsing for Qwen: rm -rf $BUILD_DIR and run this script again, or FORCE_LLAMACPP_REBUILD=1)"
+  echo "  (To rebuild: FORCE_LLAMACPP_REBUILD=1 ./setup/build/llamacpp_cuda.sh or ./setup/build/update_llamacpp.sh)"
   echo ""
   exit 0
 fi
@@ -63,7 +64,7 @@ cd "$BUILD_DIR"
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DGGML_CUDA=ON \
-  -DCMAKE_CUDA_COMPILER="$CUDA_HOME/bin/nvcc" \
+  -DCMAKE_CUDA_COMPILER="${CUDA_HOME}/bin/nvcc" \
   -DBUILD_SHARED_LIBS=OFF
 
 cmake --build . --config Release -j$(nproc)

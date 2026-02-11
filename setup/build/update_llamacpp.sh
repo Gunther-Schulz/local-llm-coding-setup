@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Update llama.cpp to latest master and rebuild (vision + CUDA).
+# Update llama.cpp to latest master and rebuild CUDA (llama-server).
 # Usage: ./setup/build/update_llamacpp.sh
-# Optional: LLAMACPP_UPDATE_VISION=0 or LLAMACPP_UPDATE_CUDA=0 (Fish: env VAR=value ./update_llamacpp.sh)
 set -e
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -10,7 +9,7 @@ cd "$ROOT"
 LLAMACPP_DIR="$ROOT/external/llama.cpp"
 
 echo "════════════════════════════════════════════════════════════════"
-echo "  Update llama.cpp to latest and rebuild"
+echo "  Update llama.cpp to latest and rebuild (CUDA)"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
@@ -26,17 +25,7 @@ echo "✓ Updated llama.cpp"
 echo ""
 
 export FORCE_LLAMACPP_REBUILD=1
-
-if [ "${LLAMACPP_UPDATE_VISION:-1}" = "1" ]; then
-  echo "Rebuilding llama.cpp (vision)..."
-  "$ROOT/setup/build/llamacpp_vision.sh"
-  echo ""
-fi
-
-if [ "${LLAMACPP_UPDATE_CUDA:-1}" = "1" ]; then
-  echo "Rebuilding llama.cpp (CUDA)..."
-  "$ROOT/setup/build/llamacpp_cuda.sh"
-  echo ""
-fi
-
+echo "Rebuilding llama.cpp (CUDA)..."
+"$ROOT/setup/build/llamacpp_cuda.sh"
+echo ""
 echo "✓ llama.cpp update complete."

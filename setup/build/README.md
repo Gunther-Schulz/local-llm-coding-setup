@@ -1,34 +1,31 @@
 # Setup build scripts
 
-These scripts are invoked by **setup/install.sh**; they can also be run directly when needed.
+Scripts to build and update **llama.cpp**. Used by `./setup/install.sh`; can be run directly when needed.
 
-- **llamacpp_vision.sh** – Build llama.cpp (CPU) for vision API → `external/llama.cpp/build/`
-- **llamacpp_cuda.sh** – Build llama.cpp (CUDA) for LLM engine + benchmarks → `external/llama.cpp/build-cuda/`
-- **update_llamacpp.sh** – Pull latest llama.cpp from master and rebuild both vision and CUDA (one-command update)
+- **llamacpp_cuda.sh** – Build llama.cpp (CUDA) for LLM server → `external/llama.cpp/build-cuda/`
+- **llamacpp_vision.sh** – (Optional) Build llama.cpp (CPU) for vision → `external/llama.cpp/build/`
+- **update_llamacpp.sh** – Pull latest master and rebuild CUDA only
 
-To run a full setup including both builds: **./setup/install.sh**
+## First-time setup
 
-## Updating llama.cpp to the newest version
+```bash
+./setup/install.sh
+```
 
-To update to the latest llama.cpp and rebuild:
+Creates conda env `vLLM`, uses `.wheels/` as pip cache, and builds llama.cpp CUDA.
+
+## Update llama.cpp
+
+To pull latest and rebuild (e.g. for grammar/tool-call fixes):
 
 ```bash
 ./setup/build/update_llamacpp.sh
 ```
 
-This pulls from `origin master` and force-rebuilds both vision and CUDA. Optional env vars:
+- Rebuilds CUDA only (llama-server).
 
-- `LLAMACPP_UPDATE_VISION=0` – skip vision rebuild
-- `LLAMACPP_UPDATE_CUDA=0` – skip CUDA rebuild
+Manual rebuild (no git pull): `FORCE_LLAMACPP_REBUILD=1 ./setup/build/llamacpp_cuda.sh`
 
-Manual options (if you only need one build):
+## Wheel cache
 
-- **CUDA only:** `FORCE_LLAMACPP_REBUILD=1 ./setup/build/llamacpp_cuda.sh` (script already pulls when run)
-- **Vision only:** `FORCE_LLAMACPP_REBUILD=1 ./setup/build/llamacpp_vision.sh` (script pulls when run)
-
-## Native tool-call parsing (llama-server)
-
-Recent llama.cpp (master) includes **native tool-call parsing** for Qwen (Qwen2.5, Qwen3 Coder): when the request has tools, the server parses the model output and returns OpenAI-style `tool_calls` instead of raw text. The proxy then passes them through and does not need to transform.
-
-- Both build scripts **pull latest** before building when the repo already exists.
-- If binaries already exist, the scripts skip building unless you use **FORCE_LLAMACPP_REBUILD=1** or run **update_llamacpp.sh**.
+`./setup/install.sh` sets `PIP_CACHE_DIR` to `.wheels/` (or `WHEEL_CACHE` if set). Reinstalls reuse cached wheels. Override: `WHEEL_CACHE=/path ./setup/install.sh` or `PIP_CACHE_DIR=/path pip install ...`.
