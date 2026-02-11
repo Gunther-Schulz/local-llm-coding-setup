@@ -17,7 +17,7 @@ echo ""
 if [ ! -d "$LLAMACPP_DIR" ]; then
     echo "Cloning llama.cpp..."
     mkdir -p external
-    git clone https://github.com/ggml-org/llama.cpp.git "$LLAMACPP_DIR"
+    git clone https://github.com/ggerganov/llama.cpp.git "$LLAMACPP_DIR"
     echo "✓ Cloned llama.cpp"
     echo ""
 else
