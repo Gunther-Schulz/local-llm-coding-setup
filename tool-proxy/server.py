@@ -64,6 +64,7 @@ class ToolProxyHandler(BaseHTTPRequestHandler):
     interceptor: Optional[Interceptor] = None
     backend_url: Optional[str] = None
     debug: bool = False
+    _request_counter: int = 0  # used to synthesize turn_id when client sends none
     
     def log_message(self, format, *args):
         """Override to use our logging configuration."""
@@ -160,7 +161,7 @@ class ToolProxyHandler(BaseHTTPRequestHandler):
             
             logger.info("POST %s from %s Content-Length=%d", parsed_path.path, client, content_length)
             
-            # Extract turn_id
+            # Extract turn_id (or synthesize one per request so read coalescing works)
             turn_id = self._get_turn_id_from_headers()
             turn_id_source = "header/query"
             if turn_id is None and body:
@@ -170,6 +171,10 @@ class ToolProxyHandler(BaseHTTPRequestHandler):
                     turn_id_source = "body"
                 except (json.JSONDecodeError, TypeError):
                     pass
+            if turn_id is None:
+                ToolProxyHandler._request_counter += 1
+                turn_id = f"req-{ToolProxyHandler._request_counter}"
+                turn_id_source = "synthetic"
             self._debug("turn_id=%s (from %s)", turn_id, turn_id_source)
             
             try:
@@ -192,6 +197,7 @@ class ToolProxyHandler(BaseHTTPRequestHandler):
             # Log every tool call for tracking
             self._log_all_tool_calls(tool_calls, extract_source)
             
+            reminders_collected: List[str] = []
             if tool_calls and self.interceptor:
                 logger.info("intercepting %d tool call(s) turn_id=%s", len(tool_calls), turn_id)
                 for i, tool_call in enumerate(tool_calls):
@@ -215,12 +221,25 @@ class ToolProxyHandler(BaseHTTPRequestHandler):
                     modified_call, reminder = self.interceptor.intercept_call(tool_call, turn_id)
                     
                     if reminder:
-                        logger.info("  [%d] reminder injected for %s (len=%d)", i, tool_name, len(reminder))
+                        reminders_collected.append(reminder)
+                        logger.info("  [%d] reminder for %s (len=%d)", i, tool_name, len(reminder))
                         self._debug("  [%d] reminder: %s", i, _truncate(reminder, 800))
             else:
                 self._debug("no tool_calls to intercept")
             
-            # Forward to backend (streaming vs non-streaming)
+            # Deliver reminders to the model via a synthetic user message (backend-safe)
+            if reminders_collected:
+                reminder_content = "[Tool reminders]\n\n" + "\n\n---\n\n".join(reminders_collected)
+                if "messages" not in request_data:
+                    request_data["messages"] = []
+                request_data["messages"].append({
+                    "role": "user",
+                    "content": reminder_content,
+                })
+                self._debug("appended reminder message (%d parts, %d chars)", len(reminders_collected), len(reminder_content))
+            
+            # Strip any proxy-injected fields from tool_calls so backend receives valid schema
+            self._strip_proxy_fields_from_request(request_data)
             t_before_backend = time.perf_counter()
             stream_requested = request_data.get("stream", False)
             backend_url_used = f"{self.backend_url or ''}{parsed_path.path}"
@@ -305,6 +324,13 @@ class ToolProxyHandler(BaseHTTPRequestHandler):
         if "turn_id" in query_params:
             return query_params["turn_id"][0]
         return self.headers.get("X-Turn-ID")
+    
+    def _strip_proxy_fields_from_request(self, request_data: Dict[str, Any]) -> None:
+        """Remove proxy-injected fields from tool_calls so backend receives valid schema (mutates in place)."""
+        for message in request_data.get("messages") or []:
+            for tc in (message.get("tool_calls") or []):
+                if isinstance(tc, dict) and "response_reminder" in tc:
+                    del tc["response_reminder"]
     
     def _forward_to_backend(self, request_data: Dict[str, Any], path: str) -> Dict[str, Any]:
         """Forward request to backend Llama.cpp server."""

@@ -5,6 +5,7 @@ Injects reminders and prevents read loops via deduplication.
 
 import json
 import re
+import sys
 import logging
 from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass, field
@@ -130,8 +131,7 @@ class Interceptor:
                     reminder = read_reminder
         
         if reminder:
-            tool_call["response_reminder"] = reminder
-            logger.debug("injected reminder for tool=%s len=%d", tool_name, len(reminder))
+            logger.debug("reminder for tool=%s len=%d (delivered via message)", tool_name, len(reminder))
         
         return tool_call, reminder
     
@@ -160,7 +160,7 @@ class Interceptor:
             return None
         
         if turn_id is None:
-            logger.warning("read tracking without turn_id, skipping")
+            logger.debug("read tracking without turn_id, skipping (reminders still applied)")
             return None
         
         file_path, range_tuple = self._parse_read_params(tool_call)
@@ -245,12 +245,12 @@ class Interceptor:
         if start_line is None:
             start_line = 0
         if end_line is None:
-            # No range specified - read full file
-            end_line = float('inf')
+            # No range specified - read full file (use sentinel int, not inf - int(inf) raises)
+            end_line = sys.maxsize
         
         try:
             range_tuple = (int(start_line), int(end_line))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             logger.debug("parse_read_params: invalid range start=%s end=%s", start_line, end_line)
             range_tuple = (0, 0)
         return file_path, range_tuple
