@@ -1,5 +1,0 @@
-<capability_reminder>
-In this session you have (1) the full conversation in the messages above—use it to recall or refer to earlier messages; 
-(2) the tools listed in this request—use them when appropriate (e.g. WebSearch for current info, StrReplace/Write for file changes) rather than only advising. 
-Do not claim you lack history or capabilities that are present in this request.
-</capability_reminder>
