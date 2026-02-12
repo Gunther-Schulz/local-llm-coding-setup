@@ -112,15 +112,33 @@ while read -r model_key; do
       ln -sf "$outname" "$dest_dir/$expected" 2>/dev/null || true
     fi
   else
-    # Repo URL: download ONLY the file named in this model's YAML (gguf), not the whole repo.
+    # Repo URL: download the file(s) for this model. If gguf is multi-shard (e.g. -00001-of-00003.gguf), download all shards.
     if [[ -z "$gguf" ]]; then
-      echo "  skip: repo URL but no 'gguf' filename in config, cannot choose a single file"
+      echo "  skip: repo URL but no 'gguf' filename in config, cannot choose a file"
     else
-      url=$(resolve_hf_url "$download_url" "$gguf")
-      if [[ -n "$url" ]]; then
-        download_one "$url" "$dest_dir" "$gguf"
+      if [[ "$gguf" =~ ^(.+)-([0-9]+)-of-([0-9]+)\.gguf$ ]]; then
+        # Multi-shard: base name, shard index, total (zero-padded). Download shards 1..total.
+        base="${BASH_REMATCH[1]}"
+        total_pad="${BASH_REMATCH[3]}"
+        total_num=$((10#$total_pad))
+        width=${#total_pad}
+        i=1
+        while [[ $i -le $total_num ]]; do
+          shard_name="${base}-$(printf "%0${width}d" "$i")-of-${total_pad}.gguf"
+          url=$(resolve_hf_url "$download_url" "$shard_name")
+          if [[ -n "$url" ]]; then
+            download_one "$url" "$dest_dir" "$shard_name"
+          fi
+          ((i++)) || true
+        done
       else
-        echo "  skip: could not resolve URL for $gguf"
+        # Single file
+        url=$(resolve_hf_url "$download_url" "$gguf")
+        if [[ -n "$url" ]]; then
+          download_one "$url" "$dest_dir" "$gguf"
+        else
+          echo "  skip: could not resolve URL for $gguf"
+        fi
       fi
     fi
   fi

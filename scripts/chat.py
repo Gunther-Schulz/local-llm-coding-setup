@@ -18,7 +18,6 @@ from pathlib import Path
 
 from openai import OpenAI
 from rich.console import Console
-from rich.live import Live
 from rich.markdown import Markdown
 
 # Load config: repo root = parent of scripts/
@@ -69,23 +68,23 @@ def main() -> None:
         messages.append({"role": "user", "content": user_content})
 
         reply_parts: list[str] = []
-        with Live(console=console, refresh_per_second=8, transient=True) as live:
-            stream = client.chat.completions.create(
-                model="llama",
-                messages=messages,
-                stream=True,
-                max_tokens=1024,
-            )
-            for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices else None
-                if delta and getattr(delta, "content", None):
-                    reply_parts.append(delta.content)
-                    text = "".join(reply_parts)
-                    live.update(Markdown(text))
+        stream = client.chat.completions.create(
+            model="llama",
+            messages=messages,
+            stream=True,
+            max_tokens=1024,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and getattr(delta, "content", None):
+                reply_parts.append(delta.content)
+                console.print(delta.content, end="")
 
         full_reply = "".join(reply_parts)
         if full_reply.strip():
+            console.print()  # newline after stream
             console.print(Markdown(full_reply))
+        console.print()
         messages.append({"role": "assistant", "content": full_reply})
 
     if one_shot:
