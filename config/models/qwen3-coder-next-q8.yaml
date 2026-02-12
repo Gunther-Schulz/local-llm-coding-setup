@@ -1,0 +1,17 @@
+# Loaded when ACTIVE_MODEL=qwen3-coder-next-q8 (in config/server.env). Same name as this file.
+# Unsloth Dynamic Q8 (UD-Q8_K_XL): best quality quant, ~86 GB total, 3 shards. 192GB RAM + 32GB GPU; KV on GPU, weights overflow to RAM.
+gguf: UD-Q8_K_XL/Qwen3-Coder-Next-UD-Q8_K_XL-00001-of-00003.gguf
+download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
+
+context_size: 131072
+n_gpu_layers: -1
+# Use more CPU threads for partial offload (spread across CCDs); omit or override via BENCHMARK_THREADS if needed.
+threads: 28
+jinja: true
+temp: 1.0
+top_p: 0.95
+top_k: 40
+min_p: 0.01
+seed: 3407
+batch_size: 4096
+ubatch_size: 4096

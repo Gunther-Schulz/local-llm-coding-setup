@@ -1,0 +1,14 @@
+# Loaded when ACTIVE_MODEL=qwen3-coder-next-mxfp4 (in config/server.env). Same name as this file.
+gguf: Qwen3-Coder-Next-MXFP4_MOE.gguf
+download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
+
+context_size: 131072
+n_gpu_layers: -1
+jinja: true
+temp: 1.0
+top_p: 0.95
+top_k: 40
+min_p: 0.01
+seed: 3407
+batch_size: 4096
+ubatch_size: 4096

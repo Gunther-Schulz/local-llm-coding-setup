@@ -13,8 +13,8 @@ logs/
 # Test directories
 .test_wheel/
 
-# Models
-models/
+# Model weights (downloaded GGUF); config/models/ is tracked
+/models/
 # External dependencies (llama.cpp, built locally)
 external/
 

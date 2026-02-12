@@ -1,0 +1,15 @@
+# BGE-M3 embedding model (BAAI). For vector/semantic search; use with llama-server embedding endpoint or separate embedding server.
+# Full precision FP16 (~1.16 GB, ~1.2 GB VRAM).
+gguf: bge-m3-FP16.gguf
+download_url: "https://huggingface.co/gpustack/bge-m3-GGUF"
+
+context_size: 0
+n_gpu_layers: -1
+jinja: true
+temp: 0
+top_p: 1.0
+top_k: 40
+min_p: 0.01
+seed: 3407
+batch_size: 512
+ubatch_size: 256
