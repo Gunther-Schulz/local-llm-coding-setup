@@ -29,7 +29,8 @@ if [[ -z "$ACTIVE_MODEL" ]]; then
   echo "Usage: ./run_server.sh [MODEL_KEY] [PORT]" >&2
   exit 1
 fi
-echo "Loading model: $ACTIVE_MODEL (stop any server on port ${PORT:-8000} first)"
+echo "Loading model: $ACTIVE_MODEL (stop any server on port ${PORT:-8001} first)"
+echo "Use this name in Cursor: $ACTIVE_MODEL"
 
 # Load per-model config (YAML -> env)
 set -a
@@ -55,7 +56,7 @@ if [[ ! -x "$LLAMA_SERVER" ]]; then
 fi
 
 # Build argv (host, port, n_gpu_layers, jinja from config)
-argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT:-8000}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
+argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT:-8001}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
 [[ "${JINJA:-1}" =~ ^(1|true|on|yes)$ ]] && argv+=(--jinja)
 [[ -n "$TEMP" ]]    && argv+=(--temp "$TEMP")
 [[ -n "$TOP_P" ]]   && argv+=(--top-p "$TOP_P")
@@ -65,6 +66,6 @@ argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT:-8000}" --n-gp
 [[ -n "$BATCH_SIZE" ]]  && argv+=(--batch-size "$BATCH_SIZE")
 [[ -n "$UBATCH_SIZE" ]] && argv+=(--ubatch-size "$UBATCH_SIZE")
 
-echo "port=${PORT:-8000} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")"
-echo "API: http://${HOST:-127.0.0.1}:${PORT:-8000}/v1"
+echo "port=${PORT:-8001} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")"
+echo "API: http://${HOST:-127.0.0.1}:${PORT:-8001}/v1"
 exec "$LLAMA_SERVER" "${argv[@]}"

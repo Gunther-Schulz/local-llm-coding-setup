@@ -3,35 +3,35 @@
 
 # Tool proxy settings (backend_url port must match config/server.env PORT)
 proxy:
-  port: 8002
-  backend_url: http://localhost:8000
+  port: 8010
+  backend_url: http://localhost:8001
 
 # Tool-specific reminders - messages injected when tools are called
 tools:
   Read:
-    enabled: true
+    enabled: false
     message: |
       REMINDER: Use Grep/Glob first for discovery. Read only after you know what file(s) to examine.
       If you've already read this file/range this turn, avoid redundant reads - consolidate or move on.
   
   Grep:
-    enabled: true
+    enabled: false
     message: |
       REMINDER: Grep is for finding patterns across files. Use Glob to discover files first.
   
   Glob:
-    enabled: true
+    enabled: false
     message: |
       REMINDER: Glob discovers files by pattern. Use Grep to search file contents.
   
   LS:
-    enabled: true
+    enabled: false
     message: |
       REMINDER: LS lists directory contents. Use Glob for pattern-based file discovery.
 
 # Read coalescing / deduplication settings (prevents same file/range loops)
 read_coalescing:
-  enabled: true
+  enabled: false
   max_reads_per_turn: 3
   reminder_message: |
     WARNING: This file/range has been read {count} times this turn.
@@ -40,7 +40,7 @@ read_coalescing:
 
 # Overlapping range detection (optional, can catch redundant reads)
 overlapping_ranges:
-  enabled: true
+  enabled: false
   max_overlapping_reads: 2
   reminder_message: |
     WARNING: Multiple overlapping reads detected on this file.
@@ -48,7 +48,7 @@ overlapping_ranges:
 
 # Turn tracking configuration
 turn_tracking:
-  enabled: true
+  enabled: false
   # How many turns to keep in memory (0 = infinite, but resets on server restart)
   max_turns_in_memory: 100
   # Clear turn state on turn boundary (auto-detected via turn_id)

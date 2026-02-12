@@ -21,11 +21,11 @@ VERBOSE=
 
 if [ $# -eq 0 ]; then
     echo "No args provided, using defaults:"
-    echo "  Port: 8002"
-    echo "  Backend URL: http://localhost:8000  (match config/server.env PORT)"
+    echo "  Port: 8010"
+    echo "  Backend URL: http://localhost:8001  (match config/server.env PORT)"
     echo "  Config: config/default_rules.yaml"
     [[ -n "$VERBOSE" ]] && echo "  Debug: enabled (DEBUG=1 or --verbose)"
-    python server.py --port 8002 --backend-url http://localhost:8000 --config config/default_rules.yaml $VERBOSE
+    python server.py --port 8010 --backend-url http://localhost:8001 --config config/default_rules.yaml $VERBOSE
 else
     python server.py "$@"
 fi
