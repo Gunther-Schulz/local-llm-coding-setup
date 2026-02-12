@@ -1,32 +1,28 @@
-# Qwen3-Coder-Next MoE / KV-cache benchmark
+# Benchmark (config/models)
 
-Standalone llama.cpp testing (no proxy): compare Qwen3-Coder-Next 80B (Q2/Q3/Q4, MoE offload), Qwen3-Coder-30B-A3B, and GLM-4.7-Flash on your 5090. Port **18999**.
+Standalone llama.cpp testing (no proxy). **Scenarios use config/models:** each scenario is a model key (e.g. `qwen3-coder-next-mxfp4`); `run_server.sh` loads `config/models/<model_key>.yaml` (same as main `run_server.sh`). Port **18999**.
 
-## Definitely try first (single RTX 5090 / 32GB, coding)
+## Quick start
 
-| Priority | Scenario | Why | Command to test |
-|----------|----------|-----|------------------|
-| **1** | **glm47_mxfp4_full** | Best full-GPU coding on 5090: 59.2% SWE-bench, ~17 GB, 131K context, ~120–158 tok/s | `./benchmark/next/run_server.sh glm47_mxfp4_full 18999` then `python3 benchmark/next/measure.py --port 18999 --model glm-4.7-flash` |
-| **2** | **qwen30b_q4xl_full** | Highest Qwen coding quality that fits full GPU: 30B Q4_K_XL, ~17 GB, 147K context, ~110–234 tok/s | `./benchmark/next/run_server.sh qwen30b_q4xl_full 18999` then `python3 benchmark/next/measure.py --port 18999 --model qwen3-coder-30b-a3b` |
-| **3** | **q4m_moe** or **q4_moe** | Highest coding quality that fits (with offload): Coder-Next 80B Q4, experts on CPU, ~25–30 tok/s | `./benchmark/next/run_server.sh q4m_moe 18999` then `python3 benchmark/next/measure.py --port 18999` |
-| **4** | **q2_full** | Coder-Next 80B full GPU baseline: fits 32 GB, ~70 tok/s | `./benchmark/next/run_server.sh q2_full 18999` then `python3 benchmark/next/measure.py --port 18999` |
-| **5** | **iq3xxs_full** | Coder-Next 80B, better than Q2, still full GPU (~31 GB) | `./benchmark/next/run_server.sh iq3xxs_full 18999` then `python3 benchmark/next/measure.py --port 18999` |
+1. Ensure models are in `models/<model_key>/` (per `config/models/<model_key>.yaml` `gguf:`). Use main app: `./scripts/download-models.sh` (or specific keys: `./scripts/download-models.sh qwen3-coder-next-mxfp4`).
+2. Run one scenario (scenario name = model key from scenarios.cfg):
 
-Run the server in one terminal; in another, run `measure.py` or point your client at `http://127.0.0.1:18999/v1`.
+   ```bash
+   ./benchmark/next/run_server.sh qwen3-coder-next-mxfp4 18999
+   # In another terminal:
+   python3 benchmark/next/measure.py --port 18999 --model qwen3-coder-next-mxfp4
+   ```
 
-## Models covered
+3. Run all scenarios: `./benchmark/next/benchmark.sh` (short only) or `./benchmark/next/benchmark.sh --long`.
 
-| Model | Scenarios | Notes |
-|-------|-----------|--------|
-| **GLM-4.7-Flash** 30B MoE | glm47_mxfp4_full | MXFP4_MOE, ~17 GB, full GPU, 131K context |
-| **Qwen3-Coder-30B-A3B** | qwen30b_q4xl_full | UD-Q4_K_XL, ~17 GB, full GPU, 147K context |
-| **Qwen3-Coder-Next** 80B MoE | q2_full, q2_cache_k, q2_*gpu, iq3xxs_full, q3s_full, q3_moe*, q4m_full, q4m_moe, mxfp4_full, q4_moe* | Q2/Q3/Q4/IQ3/MXFP4; full GPU or MoE offload |
+## Scenarios
+
+Scenarios are defined in **scenarios.cfg** and mirror **config/models/*.yaml**: one scenario per model key. Add a line to scenarios.cfg for any new model you add under config/models. Current scenarios (from config/models): qwen3-coder-next-mxfp4, qwen3-coder-next-q8, qwen3-coder-next-bf16, qwen3-next-80b-abliterated-mxfp4, qwen3-next-80b-thinking-mxfp4, huihui-moe-4.8b-abliterated-mxfp4.
 
 ## Layout
 
-- **download.sh** – Download all GGUF (Coder-Next, Coder-30B Q4_K_XL, GLM-4.7-Flash MXFP4_MOE). Run once.
-- **scenarios.cfg** – Scenario definitions: `name|model_path|moe_ot|cache_k|n_gpu_layers[|api_model]`. Optional **api_model** for non-Qwen backends. **n_gpu_layers**: empty = all GPU; `0` = all CPU; integer or `25%`/`50%`/`75%` = GPU/CPU split (BENCHMARK_N_LAYERS=80 for Coder-Next).
-- **run_server.sh** – Start llama-server for one scenario (port 18999). Context size defaults to 32K. Override via **--ctx** (e.g. `--ctx 128k`) or env **BENCHMARK_CTX=131072**. This sets the server’s `-c` (max context for the run); the model’s native max (e.g. 256K) is unchanged.
+- **scenarios.cfg** – Scenario list: `scenario_name|model_key|moe_ot|cache_k|n_gpu_layers[|api_model]`. **model_key** = `config/models/<model_key>.yaml` (same as ACTIVE_MODEL in main stack). n_gpu_layers: empty = use YAML; 0 = CPU; integer or 25%/50%/75% = override.
+- **run_server.sh** – Loads config via `scripts/load_model_config.sh <model_key>`, starts llama-server (port 18999). Context/temp/top_p etc. from YAML; override with **BENCHMARK_CTX=131072** for 128K.
 - **fill_context.sh** – Build long prompt for long-context tests.
 - **measure.py** – Call `/v1/chat/completions`, report tokens and tok/s; with long prompt uses streaming and reports **gen_tok_s** (generation/decode speed). Use `--model` for non-default backends.
 - **benchmark.py** – Main benchmark logic: start server → measure → stop; writes **results.txt**. Short column = tok/s; Long column = **gen/s** (decode speed). After each scenario prints **memory stats** (VRAM vs RAM from llama-server’s exit breakdown). Options: `--long`, `--short-only`, `--ctx 128k`, `--no-cpu`, and optional scenario name.
@@ -36,15 +32,11 @@ Run the server in one terminal; in another, run `measure.py` or point your clien
 ## Prereqs
 
 - llama-server (CUDA): `./external/llama.cpp/build-cuda/bin/llama-server` or set `LLAMACPP_SERVER_BIN`.
-- `huggingface_hub` (or `huggingface-cli`) for download: `pip install huggingface_hub`.
+- For downloads: main app `./scripts/download-models.sh` (requires aria2, curl, python3, PyYAML).
 
 ## Usage
 
-1. **Download all models** (once):
-
-   ```bash
-   ./benchmark/next/download.sh
-   ```
+1. **Download models** (once, via main app): `./scripts/download-models.sh` (all from config/models) or `./scripts/download-models.sh <model_key> ...`.
 
 2. **Run all scenarios** (short only by default):
 
@@ -58,38 +50,20 @@ Run the server in one terminal; in another, run `measure.py` or point your clien
    ./benchmark/next/benchmark.sh --long
    ```
 
-4. **128K context** (server uses 128K of the model’s max, e.g. 256K):
-
-   ```bash
-   ./benchmark/next/benchmark.sh --ctx 128k mxfp4_full --long
-   ```
-   Also: `--ctx 131072` or `BENCHMARK_CTX=131072` (env).
+4. **128K context**: `./benchmark/next/benchmark.sh --ctx 128k qwen3-coder-next-mxfp4 --long` or `BENCHMARK_CTX=131072`.
 
 5. **Skip CPU pass**: `./benchmark/next/benchmark.sh --no-cpu` or `RUN_CPU=0 ./benchmark/next/benchmark.sh`
 
-6. **Run one scenario and measure** (example: GLM-4.7-Flash):
+6. **Run one scenario and measure**: use scenario name (= model key) and same name for `--model`:
 
    ```bash
-   ./benchmark/next/run_server.sh glm47_mxfp4_full 18999
-   # In another terminal:
-   python3 benchmark/next/measure.py --port 18999 --model glm-4.7-flash
+   ./benchmark/next/run_server.sh qwen3-coder-next-mxfp4 18999
+   python3 benchmark/next/measure.py --port 18999 --model qwen3-coder-next-mxfp4
    ```
 
-   For Qwen3-Coder-Next scenarios (q2_full, q4m_moe, etc.) you can omit `--model` (default is `qwen3-coder-next`). For Qwen3-Coder-30B use `--model qwen3-coder-30b-a3b`.
+   Default `--model` is `qwen3-coder-next` if the scenario has no 6th column; otherwise use the api_model from scenarios.cfg (same as model_key).
 
-## Scenarios (summary)
-
-| Scenario | Model | MoE offload | Use case |
-|---------|-------|-------------|----------|
-| glm47_mxfp4_full | GLM-4.7-Flash MXFP4_MOE | no | Best full-GPU coding (5090) |
-| qwen30b_q4xl_full | Qwen3-Coder-30B Q4_K_XL | no | Highest Qwen full-GPU coding |
-| q2_full, q2_cache_k, q2_*gpu | Coder-Next Q2 | no | Baseline, full GPU |
-| iq3xxs_full | Coder-Next UD-IQ3_XXS | no | Better than Q2, full GPU |
-| q3s_full | Coder-Next Q3_K_S | no | May fit 32GB |
-| q3_moe*, q4m_moe, q4_moe* | Coder-Next Q3/Q4 | yes | Highest quality (offload), ~25–30 tok/s |
-| mxfp4_full, q4m_full | Coder-Next MXFP4/Q4_K_M | no | Try full GPU (may OOM on 32GB) |
-
-Full list and format in **scenarios.cfg**. Port **18999**.
+Full list in **scenarios.cfg** (one scenario per config/models entry). Port **18999**.
 
 ## Why 75% GPU can be faster than 100% GPU (and the pattern across models)
 

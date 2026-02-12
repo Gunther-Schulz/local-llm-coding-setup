@@ -104,7 +104,9 @@ def get_api_model(scenario: str) -> str:
     return "qwen3-coder-next"
 
 
-def wait_for_models(base_url: str, timeout_s: int = 60) -> bool:
+def wait_for_models(base_url: str, timeout_s: int | None = None) -> bool:
+    if timeout_s is None:
+        timeout_s = int(os.environ.get("BENCHMARK_SERVER_TIMEOUT", "300"))
     for i in range(timeout_s):
         try:
             r = subprocess.run(
@@ -123,7 +125,9 @@ def wait_for_models(base_url: str, timeout_s: int = 60) -> bool:
     return False
 
 
-def wait_for_model_ready(base_url: str, api_model: str, timeout_attempts: int = 60) -> tuple[bool, str]:
+def wait_for_model_ready(base_url: str, api_model: str, timeout_attempts: int | None = None) -> tuple[bool, str]:
+    if timeout_attempts is None:
+        timeout_attempts = int(os.environ.get("BENCHMARK_MODEL_READY_TIMEOUT", "120"))
     for attempt in range(timeout_attempts):
         try:
             r = subprocess.run(
@@ -226,7 +230,11 @@ def run_pass(
             if not wait_for_models(base_url):
                 print("Server did not become ready for", scenario)
                 proc.terminate()
-                proc.wait(timeout=10)
+                try:
+                    proc.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
                 results_lines.append((scenario, "FAIL", "-", "-", "-", "-", "-"))
                 with open(RESULTS_FILE, "a") as f:
                     f.write(f"{scenario:<18} {'FAIL':>12} {'-':>12} {'-':>12} {'-':>12} {'-':>8} {'-':>8}\n")
@@ -238,7 +246,11 @@ def run_pass(
             if not ready:
                 print(f"  Model did not become ready (got HTTP {code}); skipping measure")
                 proc.terminate()
-                proc.wait(timeout=10)
+                try:
+                    proc.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
                 results_lines.append((scenario, "FAIL", "-", "-", "-", "-", "-"))
                 with open(RESULTS_FILE, "a") as f:
                     f.write(f"{scenario:<18} {'FAIL':>12} {'-':>12} {'-':>12} {'-':>12} {'-':>8} {'-':>8}\n")
@@ -314,7 +326,11 @@ def run_pass(
                 pass
             if proc.poll() is None:
                 proc.terminate()
-                proc.wait(timeout=5)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
 
 
 def main() -> int:

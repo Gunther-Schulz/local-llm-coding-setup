@@ -32,6 +32,7 @@ mapping = [
     ("gguf", "GGUF"),
     ("context_size", "CONTEXT_SIZE"),
     ("n_gpu_layers", "N_GPU_LAYERS"),
+    ("threads", "THREADS"),
     ("jinja", "JINJA"),
     ("temp", "TEMP"),
     ("top_p", "TOP_P"),

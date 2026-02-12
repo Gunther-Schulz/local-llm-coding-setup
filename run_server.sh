@@ -57,6 +57,7 @@ fi
 
 # Build argv (host, port, n_gpu_layers, jinja from config)
 argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT:-8001}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
+[[ -n "$THREADS" ]] && argv+=(--threads "$THREADS")
 [[ "${JINJA:-1}" =~ ^(1|true|on|yes)$ ]] && argv+=(--jinja)
 [[ -n "$TEMP" ]]    && argv+=(--temp "$TEMP")
 [[ -n "$TOP_P" ]]   && argv+=(--top-p "$TOP_P")
