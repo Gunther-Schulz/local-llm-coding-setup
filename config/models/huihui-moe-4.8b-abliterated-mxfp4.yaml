@@ -5,6 +5,7 @@ download_url: "https://huggingface.co/noctrex/Huihui-MoE-4.8B-A1.7B-abliterated-
 
 context_size: 32768
 n_gpu_layers: -1
+threads: 28
 jinja: true
 temp: 0.6
 top_p: 0.95

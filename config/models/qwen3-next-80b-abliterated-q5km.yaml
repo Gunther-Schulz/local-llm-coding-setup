@@ -5,6 +5,7 @@ download_url: "https://huggingface.co/mradermacher/Qwen3-Next-80B-A3B-Instruct-a
 
 context_size: 131072
 n_gpu_layers: -1
+threads: 28
 jinja: true
 # temp: 0
 temp: 1.0
