@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
-# Start llama-server. Config: config/server.env (ACTIVE_MODEL) + config/models/<key>.yaml.
-# Usage: ./run_server.sh [MODEL_KEY] [PORT]
-#   MODEL_KEY = override ACTIVE_MODEL (e.g. qwen3-coder-next-mxfp4). Optional; else from config/server.env.
-#   PORT      = override port. Optional; else from config/server.env.
+# Core: start one llama-server. Used by run_chat.sh, run_coding.sh, run_notebook.sh.
+# No default model — pass MODEL_KEY (and optional PORT). Use launchers for a mode.
+# Config: config/server.env + config/models/<key>.yaml.
+# Usage: ./run_server.sh MODEL_KEY [PORT]
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-# Load server options
+if [[ -z "$1" ]]; then
+  echo "Usage: ./run_server.sh MODEL_KEY [PORT]" >&2
+  echo "  MODEL_KEY = config/models/<key>.yaml (e.g. qwen3-coder-next-mxfp4)" >&2
+  echo "  PORT      = optional, default 8001" >&2
+  echo "Or run a mode: ./run_chat.sh  ./run_coding.sh  ./run_notebook.sh" >&2
+  exit 1
+fi
+ACTIVE_MODEL="$1"
+PORT="${2:-8001}"
+
 if [[ ! -f "$ROOT/config/server.env" ]]; then
   echo "Config not found: config/server.env" >&2
   exit 1
@@ -15,21 +24,8 @@ fi
 set -a
 source "$ROOT/config/server.env"
 set +a
-# Optional argv: first arg = model key or port; second = port if first is model key
-if [[ -n "$1" ]]; then
-  if [[ "$1" =~ ^[0-9]+$ ]]; then
-    PORT="$1"
-  else
-    ACTIVE_MODEL="$1"
-    [[ -n "$2" ]] && PORT="$2"
-  fi
-fi
-if [[ -z "$ACTIVE_MODEL" ]]; then
-  echo "ACTIVE_MODEL not set in config/server.env and no MODEL_KEY given." >&2
-  echo "Usage: ./run_server.sh [MODEL_KEY] [PORT]" >&2
-  exit 1
-fi
-echo "Loading model: $ACTIVE_MODEL (stop any server on port ${PORT:-8001} first)"
+
+echo "Loading model: $ACTIVE_MODEL (stop any server on port ${PORT} first)"
 echo "Use this name in Cursor: $ACTIVE_MODEL"
 
 # Load per-model config (YAML -> env)
@@ -56,7 +52,7 @@ if [[ ! -x "$LLAMA_SERVER" ]]; then
 fi
 
 # Build argv (host, port, n_gpu_layers, jinja from config)
-argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT:-8001}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
+argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
 [[ -n "$THREADS" ]] && argv+=(--threads "$THREADS")
 [[ "${JINJA:-1}" =~ ^(1|true|on|yes)$ ]] && argv+=(--jinja)
 [[ -n "$TEMP" ]]    && argv+=(--temp "$TEMP")
@@ -67,6 +63,6 @@ argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT:-8001}" --n-gp
 [[ -n "$BATCH_SIZE" ]]  && argv+=(--batch-size "$BATCH_SIZE")
 [[ -n "$UBATCH_SIZE" ]] && argv+=(--ubatch-size "$UBATCH_SIZE")
 
-echo "port=${PORT:-8001} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")"
-echo "API: http://${HOST:-127.0.0.1}:${PORT:-8001}/v1"
+echo "port=${PORT} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")"
+echo "API: http://${HOST:-127.0.0.1}:${PORT}/v1"
 exec "$LLAMA_SERVER" "${argv[@]}"

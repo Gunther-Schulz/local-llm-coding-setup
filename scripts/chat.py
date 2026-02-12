@@ -37,8 +37,9 @@ def load_server_env() -> None:
             os.environ.setdefault(key, value)
 
 def get_base_url() -> str:
+    load_server_env()
     host = os.environ.get("HOST", "127.0.0.1")
-    port = os.environ.get("PORT", "8000")
+    port = os.environ.get("PURE_CHAT_PORT") or os.environ.get("PORT", "8001")
     return f"http://{host}:{port}/v1"
 
 def main() -> None:
