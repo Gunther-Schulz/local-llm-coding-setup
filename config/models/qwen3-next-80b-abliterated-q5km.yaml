@@ -1,22 +1,12 @@
 # Loaded when ACTIVE_MODEL=qwen3-next-80b-abliterated-q5km (in config/server.env). Same name as this file.
-# Higher quant (Q5_K_M) for better coding; single file ~56.7 GB. 192GB RAM holds model; 32GB 5090 runs ~half on GPU, rest offload to RAM (tune n_gpu_layers if OOM).
-display_name: "Qwen3-Next 80B Abliterated Q5_K_M (uncensored, better coding)"
+# Q5_K_M abliterated, ~56.7 GB single file. Partial offload automatic; reduce n_gpu_layers if OOM.
 gguf: Qwen3-Next-80B-A3B-Instruct-abliterated.Q5_K_M.gguf
 download_url: "https://huggingface.co/mradermacher/Qwen3-Next-80B-A3B-Instruct-abliterated-GGUF/resolve/main/Qwen3-Next-80B-A3B-Instruct-abliterated.Q5_K_M.gguf"
-tokenizer_id: "Qwen/Qwen3-Next"
-max_context: 262144
-extended_context: 262144
-tool_parser: none
-tool_format: none
-recommended_use: "80B abliterated Q5_K_M; 192GB RAM + 32GB GPU; tune n_gpu_layers if OOM"
-
-llama:
-  fit_context: 1
-  cache_type_k: q4_1
 
 context_size: 131072
 n_gpu_layers: -1
 jinja: true
+# temp: 0
 temp: 1.0
 top_p: 0.95
 top_k: 40

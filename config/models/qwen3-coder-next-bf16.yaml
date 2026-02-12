@@ -1,12 +1,13 @@
 # Loaded when ACTIVE_MODEL=qwen3-coder-next-bf16 (in config/server.env). Same name as this file.
-# Unquantized BF16: full precision, ~160 GB total, 4 shards. Needs 192GB+ RAM; 32GB GPU for KV + partial layers, rest in RAM.
+# BF16 full precision, ~160 GB, 4 shards. Partial offload automatic when model exceeds VRAM.
 gguf: BF16/Qwen3-Coder-Next-BF16-00001-of-00004.gguf
 download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
 
 context_size: 131072
 n_gpu_layers: -1
 jinja: true
-temp: 1.0
+# temp: 1.0
+temp: 0
 top_p: 0.95
 top_k: 40
 min_p: 0.01

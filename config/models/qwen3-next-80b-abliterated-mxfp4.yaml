@@ -1,11 +1,12 @@
 # Loaded when ACTIVE_MODEL=qwen3-next-80b-abliterated-mxfp4 (in config/server.env). Same name as this file.
-# First shard; llama-server loads 00002, 00003 automatically. ~43.7 GB total; on 32GB use -ngl 40–45 or MoE offload if OOM.
+# Huihui abliterated MXFP4_MOE, ~43.7 GB, 3 shards. Partial offload automatic; reduce n_gpu_layers if OOM.
 gguf: Huihui-Qwen3-Next-80B-A3B-Instruct-abliterated-MXFP4_MOE-00001-of-00003.gguf
 download_url: "https://huggingface.co/noctrex/Huihui-Qwen3-Next-80B-A3B-Instruct-abliterated-MXFP4_MOE-GGUF"
 
 context_size: 0
 n_gpu_layers: -1
 jinja: true
+# temp: 0
 temp: 1.0
 top_p: 0.95
 top_k: 40
