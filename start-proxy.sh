@@ -14,4 +14,10 @@ BACKEND_URL="${BACKEND_URL:-http://${HOST:-127.0.0.1}:${CODING_PORT:-8001}}"
 PROXY_PORT="${PROXY_PORT:-${CODING_PROXY_PORT:-8010}}"
 export BACKEND_URL PROXY_PORT
 [[ -n "$PROXY_DEBUG" ]] && export PROXY_DEBUG
+# Loop limit: stop after same tool call repeated N times (config in config/server.env)
+PROXY_MAX_IDENTICAL_TOOL_CALLS="${PROXY_MAX_IDENTICAL_TOOL_CALLS:-${CODING_PROXY_MAX_IDENTICAL_TOOL_CALLS}}"
+[[ -n "$PROXY_MAX_IDENTICAL_TOOL_CALLS" ]] && export PROXY_MAX_IDENTICAL_TOOL_CALLS
+# Similar limit: stop after same file Read or same Grep pattern N rounds
+PROXY_MAX_SIMILAR_TOOL_CALLS="${PROXY_MAX_SIMILAR_TOOL_CALLS:-${CODING_PROXY_MAX_SIMILAR_TOOL_CALLS}}"
+[[ -n "$PROXY_MAX_SIMILAR_TOOL_CALLS" ]] && export PROXY_MAX_SIMILAR_TOOL_CALLS
 exec python3 "$ROOT/scripts/chat_proxy.py" "$@"

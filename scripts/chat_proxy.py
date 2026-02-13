@@ -336,7 +336,9 @@ def main():
     server = HTTPServer(("0.0.0.0", PORT), ProxyHandler)
     opts = []
     if DEBUG:
-        opts.append("debug ON")
+        opts.append("debug ON (request/response logging)")
+    else:
+        opts.append("debug OFF — use --debug or PROXY_DEBUG=1 for request/response output")
     opts.append("max_identical=%d" % MAX_IDENTICAL_TOOL_CALLS)
     opts.append("max_similar=%d" % MAX_SIMILAR_TOOL_CALLS)
     if enabled:

@@ -17,7 +17,7 @@ Standalone llama.cpp testing (no proxy). **Scenarios use config/models:** each s
 
 ## Scenarios
 
-Scenarios are defined in **scenarios.cfg** and mirror **config/models/*.yaml**: one scenario per model key. Add a line to scenarios.cfg for any new model you add under config/models. Current scenarios (from config/models): qwen3-coder-next-mxfp4, qwen3-coder-next-q8, qwen3-coder-next-bf16, qwen3-next-80b-abliterated-mxfp4, qwen3-next-80b-thinking-mxfp4, huihui-moe-4.8b-abliterated-mxfp4.
+Scenarios are defined in **scenarios.cfg** and mirror **config/models/*.yaml**: one scenario per model key. Add a line to scenarios.cfg for any new model you add under config/models. Current scenarios include: glm-4.7-flash-q8-0, qwen3-coder-next-mxfp4, qwen3-coder-next-q8, qwen3-coder-next-bf16, qwen3-next-80b-abliterated-mxfp4, qwen3-next-80b-thinking-mxfp4, huihui-moe-4.8b-abliterated-mxfp4. To **compare two models in one run**, pass both scenario names: `./benchmark/next/benchmark.sh glm-4.7-flash-q8-0 qwen3-coder-next-mxfp4` (optionally add `--long`). Default fit (no n_gpu_layers override) is used so the server auto-fits to VRAM.
 
 ## Layout
 

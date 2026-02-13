@@ -32,6 +32,8 @@ echo "Use this name in Cursor: $ACTIVE_MODEL"
 set -a
 eval "$("$ROOT/scripts/load_model_config.sh" "$ACTIVE_MODEL")"
 set +a
+# server.env override for CPU threads (overrides YAML when set)
+[[ -n "${LLAMA_THREADS:-}" ]] && THREADS="$LLAMA_THREADS"
 
 # Resolve model path
 MODEL_PATH="$ROOT/models/${ACTIVE_MODEL}/${GGUF}"
@@ -73,6 +75,9 @@ argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-laye
 [[ -n "$SEED" ]]    && argv+=(--seed "$SEED")
 [[ -n "$BATCH_SIZE" ]]  && argv+=(--batch-size "$BATCH_SIZE")
 [[ -n "$UBATCH_SIZE" ]] && argv+=(--ubatch-size "$UBATCH_SIZE")
+[[ -n "$FLASH_ATTN" ]]  && argv+=(--flash-attn "$FLASH_ATTN")
+[[ -n "$CACHE_TYPE_K" ]] && argv+=(--cache-type-k "$CACHE_TYPE_K")
+[[ -n "$CACHE_TYPE_V" ]] && argv+=(--cache-type-v "$CACHE_TYPE_V")
 # Optional chat template override (e.g. Qwen3 Coder tool-calling fix)
 if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
   if [[ "$CHAT_TEMPLATE_FILE" != /* ]]; then

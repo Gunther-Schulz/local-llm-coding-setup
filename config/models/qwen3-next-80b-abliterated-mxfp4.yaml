@@ -13,5 +13,8 @@ top_p: 0.95
 top_k: 40
 min_p: 0.01
 seed: 3407
-batch_size: 4096
-ubatch_size: 4096
+# Higher batch for throughput on high-VRAM GPUs (e.g. RTX 5090); revert to 4096 if OOM or no gain
+batch_size: 8192
+ubatch_size: 8192
+# batch_size: 4096
+# ubatch_size: 4096

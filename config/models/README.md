@@ -21,6 +21,7 @@ Each file is `config/models/<model_key>.yaml`. The **model_key** is the filename
 - **batch_size**, **ubatch_size** – Batch sizes (optional).
 - **chat_template_file** – Optional path to a chat template (e.g. `config/templates/Qwen3-Coder-tool-fix.jinja`). Used by `run_server.sh` only.
 - **repeat_penalty** – Optional; e.g. `1.0` to disable (used by GLM-4.7-Flash). Used by `run_server.sh` only.
+- **flash_attn**, **cache_type_k**, **cache_type_v** – Optional llama-server flags (e.g. `flash_attn: off`, `cache_type_k: bf16`, `cache_type_v: bf16`). GLM configs have these commented out; uncomment to try reducing CPU load when the model is partly offloaded. See KNOWN_ISSUES.md.
 
 **Used by the chat proxy** (when request `model` matches this file’s key; default: both off):
 - **proxy_force_tool_choice_required** – If `true`, set `tool_choice` to `"required"` when the request has tools (avoids grammar trigger bug with GLM).

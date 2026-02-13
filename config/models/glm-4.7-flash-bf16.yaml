@@ -1,8 +1,8 @@
-# Loaded when ACTIVE_MODEL=glm-4.7-flash-q8-0 (in config/server.env). Same name as this file.
-# Unsloth GLM-4.7-Flash Q8_0, ~31.8 GB. 30B-A3B MoE.
+# Loaded when ACTIVE_MODEL=glm-4.7-flash-bf16 (in config/server.env). Same name as this file.
+# Unsloth GLM-4.7-Flash BF16 (non-quantized), 2 shards ~60 GB. 30B-A3B MoE.
 # Unsloth: repeat_penalty 1.0 (disable); temp 1.0 / top-p 0.95 (general); temp 0.7 / top-p 1.0 (tool-calling); min-p 0.01; jinja; ctx max 202752.
 # llama.cpp: do not use --cache-reuse with this model. See KNOWN_ISSUES.md for other GLM + llama.cpp quirks.
-gguf: GLM-4.7-Flash-Q8_0.gguf
+gguf: BF16/GLM-4.7-Flash-BF16-00001-of-00002.gguf
 download_url: "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF"
 
 context_size: 0
@@ -19,13 +19,13 @@ top_k: 40
 min_p: 0.01
 repeat_penalty: 1.0
 seed: 3407
-# Higher batch for throughput on high-VRAM GPUs (e.g. RTX 5090); revert to 4096 if OOM or no gain
+# BF16 is larger; use 4096 unless you have ample VRAM (e.g. 5090)
 # batch_size: 8192
 # ubatch_size: 8192
 batch_size: 4096
 ubatch_size: 4096
 # Proxy: only force tool_choice=required (avoid grammar trigger bug); loop limits off
-proxy_force_tool_choice_required: false
+proxy_force_tool_choice_required: true
 proxy_loop_limits: false
 # Optional: uncomment to try reducing CPU load when model is partly offloaded (see KNOWN_ISSUES.md)
 # flash_attn: off

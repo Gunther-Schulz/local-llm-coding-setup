@@ -51,8 +51,8 @@ def parse_args():
     )
     ap.add_argument(
         "scenario",
-        nargs="?",
-        help="Run only this scenario (e.g. mxfp4_full)",
+        nargs="*",
+        help="Run only these scenario(s); default: all. E.g. glm-4.7-flash-q8-0 qwen3-coder-next-mxfp4 to compare both.",
     )
     args = ap.parse_args()
     # Resolve context size
@@ -70,26 +70,24 @@ def parse_args():
     return args, ctx_val
 
 
-def load_scenarios(only_scenario: str | None) -> list[str]:
+def load_scenarios(only_scenarios: list[str] | None) -> list[str]:
     cfg = BENCH_DIR / "scenarios.cfg"
-    names = []
+    all_names = []
     with open(cfg) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
             name = line.split("|")[0].strip()
-            if only_scenario:
-                if name == only_scenario:
-                    return [name]
-            else:
-                names.append(name)
-    if only_scenario:
-        known = " ".join(load_scenarios(None))
-        print(f"Unknown scenario: {only_scenario}", file=sys.stderr)
-        print(f"Known: {known}", file=sys.stderr)
-        sys.exit(1)
-    return names
+            all_names.append(name)
+    if only_scenarios:
+        unknown = [s for s in only_scenarios if s not in all_names]
+        if unknown:
+            print(f"Unknown scenario(s): {unknown}", file=sys.stderr)
+            print(f"Known: {' '.join(all_names)}", file=sys.stderr)
+            sys.exit(1)
+        return only_scenarios
+    return all_names
 
 
 def get_api_model(scenario: str) -> str:
@@ -337,17 +335,16 @@ def main() -> int:
     args, ctx_val = parse_args()
     short_only = not args.long or args.short_only
     run_cpu = not args.no_cpu and os.environ.get("RUN_CPU", "1") == "1"
-    only_scenario = args.scenario
+    only_scenarios = args.scenario if args.scenario else None
+    scenarios = load_scenarios(only_scenarios)
 
-    scenarios = load_scenarios(only_scenario)
-
-    if only_scenario:
-        print("Mode: single scenario only:", only_scenario)
+    if only_scenarios:
+        print("Mode: scenario(s):", " ".join(only_scenarios))
     elif short_only:
         print("Mode: short only (use --long to also run long-context tests)")
     else:
         print("Mode: short + long context (--long)")
-    if run_cpu and not only_scenario:
+    if run_cpu and not only_scenarios:
         print("Will run GPU then CPU (system-only) pass for comparison")
     if ctx_val:
         print("Context override:", ctx_val, "tokens (server -c; model max may be higher)")
@@ -373,7 +370,7 @@ def main() -> int:
                         ).stdout.strip()
     except Exception:
         date_str = time.strftime("%Y-%m-%d %H:%M:%S")
-    mode_str = f"single scenario: {only_scenario}" if only_scenario else ("short only" if short_only else "short + long (--long)")
+    mode_str = f"scenario(s): {' '.join(scenarios)}" if only_scenarios else ("short only" if short_only else "short + long (--long)")
     with open(RESULTS_FILE, "w") as f:
         f.write(f"Qwen3-Coder-Next benchmark — {date_str}\n")
         f.write(f"Mode: {mode_str}\n\n")
@@ -385,7 +382,7 @@ def main() -> int:
     results_gpu: list[tuple[str, str, str, str, str, str, str]] = []
     run_pass(scenarios, short_only, long_chars, pass_env, "GPU", results_gpu)
 
-    if run_cpu and not only_scenario:
+    if run_cpu and not only_scenarios:
         print("\n=== CPU (system only) pass ===")
         with open(RESULTS_FILE, "a") as f:
             f.write("\n=== CPU (system only) ===\n")

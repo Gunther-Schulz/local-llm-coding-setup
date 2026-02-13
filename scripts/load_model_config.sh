@@ -44,6 +44,9 @@ mapping = [
     ("batch_size", "BATCH_SIZE"),
     ("ubatch_size", "UBATCH_SIZE"),
     ("chat_template_file", "CHAT_TEMPLATE_FILE"),  # optional; llama-server --chat-template-file (e.g. Qwen3 Coder)
+    ("flash_attn", "FLASH_ATTN"),  # optional; e.g. off (GLM high-CPU workaround, see KNOWN_ISSUES.md)
+    ("cache_type_k", "CACHE_TYPE_K"),  # optional; e.g. bf16
+    ("cache_type_v", "CACHE_TYPE_V"),  # optional; e.g. bf16
 ]
 for yk, ev in mapping:
     v = data.get(yk)
