@@ -42,8 +42,13 @@ if [ ! -d "$LLAMACPP_DIR" ]; then
   echo ""
 else
   echo "✓ llama.cpp already at $LLAMACPP_DIR"
-  echo "  Pulling latest (tool-call grammar fixes, etc.)..."
-  (cd "$LLAMACPP_DIR" && git fetch origin && git checkout master 2>/dev/null; git pull origin master 2>/dev/null) || true
+  if [ -n "$LLAMACPP_BRANCH" ]; then
+    echo "  Checking out branch: $LLAMACPP_BRANCH"
+    (cd "$LLAMACPP_DIR" && git fetch origin && git checkout "$LLAMACPP_BRANCH" 2>/dev/null && git pull origin "$LLAMACPP_BRANCH" 2>/dev/null) || true
+  else
+    echo "  Pulling latest master..."
+    (cd "$LLAMACPP_DIR" && git fetch origin && git checkout master 2>/dev/null; git pull origin master 2>/dev/null) || true
+  fi
   echo ""
 fi
 

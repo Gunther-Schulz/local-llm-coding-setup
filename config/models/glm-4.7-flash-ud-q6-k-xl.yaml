@@ -9,22 +9,16 @@ temp: 0.7
 top_p: 1.0
 top_k: 40
 min_p: 0.01
-proxy_force_tool_choice_required: true
-proxy_loop_limits: false
 
 llama:
   gguf: GLM-4.7-Flash-UD-Q6_K_XL.gguf
   context_size: 0
   n_gpu_layers: -1
   jinja: true
-  repeat_penalty: 1.0
   seed: 3407
   batch_size: 4096
   ubatch_size: 4096
-  # chat_template_file: config/templates/GLM-4-tool.jinja
-  # flash_attn: off
-  # cache_type_k: bf16
-  # cache_type_v: bf16
+  chat_template_file: config/templates/GLM-4-tool.jinja
 
 vllm:
   model: models/glm-4.7-flash-ud-q6-k-xl/GLM-4.7-Flash-UD-Q6_K_XL.gguf

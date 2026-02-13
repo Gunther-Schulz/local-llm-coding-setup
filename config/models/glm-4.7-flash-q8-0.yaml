@@ -17,17 +17,10 @@ top_p: 1.0
 # top_p: 0.95
 top_k: 40
 min_p: 0.01
-repeat_penalty: 1.0
 seed: 3407
 # Higher batch for throughput on high-VRAM GPUs (e.g. RTX 5090); revert to 4096 if OOM or no gain
 # batch_size: 8192
 # ubatch_size: 8192
 batch_size: 4096
 ubatch_size: 4096
-# Proxy: only force tool_choice=required (avoid grammar trigger bug); loop limits off
-proxy_force_tool_choice_required: false
-proxy_loop_limits: false
-# Optional: uncomment to try reducing CPU load when model is partly offloaded (see KNOWN_ISSUES.md)
-# flash_attn: off
-# cache_type_k: bf16
-# cache_type_v: bf16
+chat_template_file: config/templates/GLM-4-tool.jinja
