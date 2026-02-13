@@ -78,6 +78,7 @@ fi
 # Log file (overwritten each run, no timestamp)
 mkdir -p "$ROOT/logs"
 SERVER_LOG="$ROOT/logs/server.log"
+rm -f "$SERVER_LOG"
 
 # Model alias: one name in Cursor for whatever model is running (config/server.env: CURSOR_MODEL_ALIAS, default "local")
 MODEL_ALIAS="${CURSOR_MODEL_ALIAS:-local}"

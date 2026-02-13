@@ -205,6 +205,7 @@ def run_pass(
 ) -> None:
     base_url = f"http://127.0.0.1:{PORT}"
     fill_path = BENCH_DIR / ".long_prompt.txt"
+    memory_lines: list[tuple[str, str]] = []
 
     for scenario in scenarios:
         print(f"--- {scenario} ({backend_label}) ---")
@@ -295,12 +296,10 @@ def run_pass(
                 proc.kill()
                 proc.wait()
 
-            # Memory breakdown
+            # Memory breakdown (collected for separate section so table stays readable)
             mem_line = run_parse_memory(SERVER_LOG)
             if mem_line:
-                print(mem_line)
-                with open(RESULTS_FILE, "a") as f:
-                    f.write(mem_line + "\n")
+                memory_lines.append((scenario, mem_line))
 
             short_s = tok_s_short if tok_s_short else "-"
             long_s = tok_s_long if tok_s_long else "-"
@@ -312,6 +311,8 @@ def run_pass(
             with open(RESULTS_FILE, "a") as f:
                 f.write(f"{scenario:<18} {short_s:>12} {long_s:>12} {sc:>12} {lc:>12} {st:>8} {lt:>8}\n")
             print(f"  short: {short_s} tok/s ctx={sc} time={st}  long: {long_s} gen/s ctx={lc} time={lt}")
+            if mem_line:
+                print(f"    {mem_line}")
 
         except KeyboardInterrupt:
             proc.terminate()
@@ -329,6 +330,13 @@ def run_pass(
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait(timeout=5)
+
+    # Write memory breakdown in a separate section so the results table stays readable
+    if memory_lines:
+        with open(RESULTS_FILE, "a") as f:
+            f.write("\n=== Memory ===\n")
+            for scen, mem in memory_lines:
+                f.write(f"{scen}: {mem}\n")
 
 
 def main() -> int:

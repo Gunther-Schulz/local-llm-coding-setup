@@ -27,6 +27,8 @@ ubatch_size: 4096
 # Proxy: only force tool_choice=required (avoid grammar trigger bug); loop limits off
 proxy_force_tool_choice_required: true
 proxy_loop_limits: false
+# Chat template with native tool description (avoids "does not natively describe tools" fallback)
+# chat_template_file: config/templates/GLM-4-tool.jinja
 # Optional: uncomment to try reducing CPU load when model is partly offloaded (see KNOWN_ISSUES.md)
 # flash_attn: off
 # cache_type_k: bf16

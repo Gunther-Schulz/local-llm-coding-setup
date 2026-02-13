@@ -14,10 +14,10 @@ top_k: 40
 min_p: 0.01
 seed: 3407
 # Higher batch for throughput on high-VRAM GPUs (e.g. RTX 5090); revert to 4096 if OOM or no gain
-batch_size: 8192
-ubatch_size: 8192
-# batch_size: 4096
-# ubatch_size: 4096
+# batch_size: 8192
+# ubatch_size: 8192
+batch_size: 4096
+ubatch_size: 4096
 # Use in-repo template with stricter tool-calling instructions (do not omit <tool_call>; required params non-empty)
 chat_template_file: config/templates/Qwen3-Coder-tool-fix.jinja
 # Proxy (when request model matches this file name): enable tool_choice=required + loop limits
