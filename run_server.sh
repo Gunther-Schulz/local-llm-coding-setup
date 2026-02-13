@@ -2,20 +2,33 @@
 # Core: start one llama-server. Used by run_chat.sh, run_coding.sh, run_notebook.sh.
 # No default model — pass MODEL_KEY (and optional PORT). Use launchers for a mode.
 # Config: config/server.env + config/models/<key>.yaml.
-# Usage: ./run_server.sh MODEL_KEY [PORT]
+# Usage: ./run_server.sh [--verbose] MODEL_KEY [PORT]
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-if [[ -z "$1" ]]; then
-  echo "Usage: ./run_server.sh MODEL_KEY [PORT]" >&2
+VERBOSE=""
+ACTIVE_MODEL=""
+PORT=""
+for arg in "$@"; do
+  if [[ "$arg" == "--verbose" ]]; then
+    VERBOSE=1
+  elif [[ -z "$ACTIVE_MODEL" ]]; then
+    ACTIVE_MODEL="$arg"
+  elif [[ -z "$PORT" && "$arg" =~ ^[0-9]+$ ]]; then
+    PORT="$arg"
+  fi
+done
+PORT="${PORT:-8001}"
+
+if [[ -z "$ACTIVE_MODEL" ]]; then
+  echo "Usage: ./run_server.sh [--verbose] MODEL_KEY [PORT]" >&2
+  echo "  --verbose = pass --verbose to llama-server (e.g. for tool/template messages)" >&2
   echo "  MODEL_KEY = config/models/<key>.yaml (e.g. qwen3-coder-next-mxfp4)" >&2
   echo "  PORT      = optional, default 8001" >&2
   echo "Or run a mode: ./run_chat.sh  ./run_coding.sh  ./run_notebook.sh" >&2
   exit 1
 fi
-ACTIVE_MODEL="$1"
-PORT="${2:-8001}"
 
 if [[ ! -f "$ROOT/config/server.env" ]]; then
   echo "Config not found: config/server.env" >&2
@@ -62,8 +75,14 @@ if [[ ! -x "$LLAMA_SERVER" ]]; then
   exit 1
 fi
 
+# Log file (overwritten each run, no timestamp)
+mkdir -p "$ROOT/logs"
+SERVER_LOG="$ROOT/logs/server.log"
+
+# Model alias: one name in Cursor for whatever model is running (config/server.env: CURSOR_MODEL_ALIAS, default "local")
+MODEL_ALIAS="${CURSOR_MODEL_ALIAS:-local}"
 # Build argv (host, port, n_gpu_layers, jinja from config)
-argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
+argv=(-m "$MODEL_PATH" --alias "$MODEL_ALIAS" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
 [[ -n "$MMPROJ_PATH" ]] && argv+=(--mmproj "$MMPROJ_PATH")
 [[ -n "$THREADS" ]] && argv+=(--threads "$THREADS")
 [[ "${JINJA:-1}" =~ ^(1|true|on|yes)$ ]] && argv+=(--jinja)
@@ -78,6 +97,8 @@ argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-laye
 [[ -n "$FLASH_ATTN" ]]  && argv+=(--flash-attn "$FLASH_ATTN")
 [[ -n "$CACHE_TYPE_K" ]] && argv+=(--cache-type-k "$CACHE_TYPE_K")
 [[ -n "$CACHE_TYPE_V" ]] && argv+=(--cache-type-v "$CACHE_TYPE_V")
+[[ -n "$VERBOSE" ]]     && argv+=(--verbose)
+argv+=(--log-file "$SERVER_LOG")
 # Optional chat template override (e.g. Qwen3 Coder tool-calling fix)
 if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
   if [[ "$CHAT_TEMPLATE_FILE" != /* ]]; then
@@ -89,6 +110,7 @@ if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
   fi
 fi
 
-echo "port=${PORT} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")${MMPROJ_PATH:+ mmproj=$(basename "$MMPROJ_PATH")}"
-echo "API: http://${HOST:-127.0.0.1}:${PORT}/v1"
+echo "port=${PORT} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")${MMPROJ_PATH:+ mmproj=$(basename "$MMPROJ_PATH")}${VERBOSE:+ verbose=1}"
+echo "log=$SERVER_LOG"
+echo "API: http://${HOST:-127.0.0.1}:${PORT}/v1  (use in Cursor: $MODEL_ALIAS)"
 exec "$LLAMA_SERVER" "${argv[@]}"
