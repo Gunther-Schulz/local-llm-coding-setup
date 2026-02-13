@@ -45,6 +45,22 @@ echo "Use this name in Cursor: $ACTIVE_MODEL"
 set -a
 eval "$("$ROOT/scripts/load_model_config.sh" "$ACTIVE_MODEL")"
 set +a
+BACKEND="${BACKEND:-llama}"
+
+# Log file (overwritten each run; used by both backends)
+mkdir -p "$ROOT/logs"
+SERVER_LOG="$ROOT/logs/server.log"
+rm -f "$SERVER_LOG"
+
+# -------- vLLM backend --------
+if [[ "${BACKEND}" == "vllm" ]]; then
+  echo "Loading model: $ACTIVE_MODEL (stop any server on port ${PORT} first)"
+  echo "Use this name in Cursor: ${CURSOR_MODEL_ALIAS:-$ACTIVE_MODEL}"
+  echo "backend=vllm"
+  exec "$ROOT/scripts/run_vllm.sh"
+fi
+
+# -------- llama-server backend (default) --------
 # server.env override for CPU threads (overrides YAML when set)
 [[ -n "${LLAMA_THREADS:-}" ]] && THREADS="$LLAMA_THREADS"
 
@@ -74,11 +90,6 @@ if [[ ! -x "$LLAMA_SERVER" ]]; then
   echo "Run: ./setup/install.sh  or  ./setup/build/llamacpp_cuda.sh" >&2
   exit 1
 fi
-
-# Log file (overwritten each run, no timestamp)
-mkdir -p "$ROOT/logs"
-SERVER_LOG="$ROOT/logs/server.log"
-rm -f "$SERVER_LOG"
 
 # Model alias: one name in Cursor for whatever model is running (config/server.env: CURSOR_MODEL_ALIAS, default "local")
 MODEL_ALIAS="${CURSOR_MODEL_ALIAS:-local}"
@@ -111,7 +122,7 @@ if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
   fi
 fi
 
-echo "port=${PORT} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")${MMPROJ_PATH:+ mmproj=$(basename "$MMPROJ_PATH")}${VERBOSE:+ verbose=1}"
+echo "port=${PORT} backend=llama ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")${MMPROJ_PATH:+ mmproj=$(basename "$MMPROJ_PATH")}${VERBOSE:+ verbose=1}"
 echo "log=$SERVER_LOG"
 echo "API: http://${HOST:-127.0.0.1}:${PORT}/v1  (use in Cursor: $MODEL_ALIAS)"
 exec "$LLAMA_SERVER" "${argv[@]}"

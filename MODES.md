@@ -11,7 +11,7 @@ Only one mode is active at a time. Configure each mode in **config/server.env**;
 
 ## Core
 
-- **run_server.sh** – Starts one llama-server. Used by all launchers. No default model.  
+- **run_server.sh** – Starts one server (llama-server or vLLM). Backend is chosen per-model in `config/models/<key>.yaml` (`backend: llama` or `backend: vllm`). Used by all launchers. No default model.  
   `./run_server.sh MODEL_KEY [PORT]`  
   With no args, prints usage and exits. Use a launcher or pass model (and optional port) explicitly.
 
