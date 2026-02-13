@@ -1,5 +1,0 @@
-# Chat proxy config (coding mode). Used by scripts/chat_proxy.py when PROXY_CONFIG points here.
-# Options are applied to POST /v1/chat/completions when tools are present.
-
-# llama.cpp supports parallel tool calls; enable to allow multiple tool calls in one turn (optional).
-parallel_tool_calls: true

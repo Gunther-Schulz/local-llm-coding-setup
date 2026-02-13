@@ -4,8 +4,7 @@ Thin proxy in front of llama-server for coding (Qwen3 Coder).
 - Forwards all requests to BACKEND_URL (e.g. http://127.0.0.1:8001).
 - For POST /v1/chat/completions: if body has "tools" and tool_choice is missing or "auto",
   sets tool_choice to "required" before forwarding (avoids client-side control).
-Env: BACKEND_URL, PROXY_PORT (default 8010), PROXY_CONFIG (YAML path, e.g. config/proxy.yaml), PROXY_DEBUG (1 = verbose logs).
-YAML: parallel_tool_calls: true -> set in request when tools present (llama.cpp optional).
+Env: BACKEND_URL, PROXY_PORT (default 8010), PROXY_DEBUG (1 = verbose logs).
 Usage: ./start-proxy.sh [--debug]  or  BACKEND_URL=... PROXY_PORT=8010 ./scripts/chat_proxy.py [--debug]
 """
 from __future__ import annotations
@@ -18,31 +17,9 @@ import urllib.error
 import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
-
 BACKEND = os.environ.get("BACKEND_URL", "http://127.0.0.1:8001").rstrip("/")
 PORT = int(os.environ.get("PROXY_PORT", "8010"))
 DEBUG = os.environ.get("PROXY_DEBUG", "").strip().lower() in ("1", "true", "on", "yes")
-
-# Proxy options from config/proxy.yaml (parallel_tool_calls, etc.)
-def _load_proxy_config() -> dict:
-    path = os.environ.get("PROXY_CONFIG")
-    if not path and os.path.isfile("config/proxy.yaml"):
-        path = "config/proxy.yaml"
-    if not path or not os.path.isfile(path):
-        return {}
-    if not yaml:
-        return {}
-    try:
-        with open(path) as f:
-            return yaml.safe_load(f) or {}
-    except Exception:
-        return {}
-
-PROXY_CONFIG = _load_proxy_config()
 
 # Redact auth for safe logging
 def _redact_headers(headers: dict) -> dict:
@@ -72,9 +49,6 @@ def apply_tool_choice(body: bytes) -> bytes:
         return body
     # "auto" or missing -> force "required" for Qwen3 Coder
     data["tool_choice"] = "required"
-    # Optional: enable parallel tool calls from config/proxy.yaml
-    if PROXY_CONFIG.get("parallel_tool_calls") is True:
-        data["parallel_tool_calls"] = True
     return json.dumps(data).encode("utf-8")
 
 
@@ -186,12 +160,7 @@ def main():
     if args.debug:
         DEBUG = True
     server = HTTPServer(("0.0.0.0", PORT), ProxyHandler)
-    opts = []
-    if DEBUG:
-        opts.append("debug ON")
-    if PROXY_CONFIG.get("parallel_tool_calls") is True:
-        opts.append("parallel_tool_calls=true")
-    opt_str = " [" + ", ".join(opts) + "]" if opts else ""
+    opt_str = " [debug ON]" if DEBUG else ""
     print("chat_proxy: %s -> http://0.0.0.0:%s (tool_choice=required when tools present)%s" % (BACKEND, PORT, opt_str), file=sys.stderr)
     server.serve_forever()
 

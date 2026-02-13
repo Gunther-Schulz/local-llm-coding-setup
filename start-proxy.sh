@@ -12,7 +12,6 @@ source "$ROOT/config/server.env"
 set +a
 BACKEND_URL="${BACKEND_URL:-http://${HOST:-127.0.0.1}:${CODING_PORT:-8001}}"
 PROXY_PORT="${PROXY_PORT:-${CODING_PROXY_PORT:-8010}}"
-PROXY_CONFIG="${PROXY_CONFIG:-$ROOT/config/proxy.yaml}"
-export BACKEND_URL PROXY_PORT PROXY_CONFIG
+export BACKEND_URL PROXY_PORT
 [[ -n "$PROXY_DEBUG" ]] && export PROXY_DEBUG
 exec python3 "$ROOT/scripts/chat_proxy.py" "$@"
