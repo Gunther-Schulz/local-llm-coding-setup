@@ -6,7 +6,7 @@ download_url: "https://huggingface.co/gpustack/bge-m3-GGUF"
 # BAAI spec: max 8192 tokens. Use smaller -c to speed up if inputs are short.
 context_size: 8192
 n_gpu_layers: -1
-threads: 28
+# threads: 28
 jinja: true
 temp: 0
 top_p: 1.0

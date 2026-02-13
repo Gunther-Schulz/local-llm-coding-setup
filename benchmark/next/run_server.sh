@@ -9,6 +9,9 @@ ROOT="$(cd "$BENCH_DIR/../.." && pwd)"
 SCENARIO="${1:?Usage: run_server.sh SCENARIO [PORT]}"
 PORT="${2:-18999}"
 
+# Optional: same as main run_server.sh (LLAMA_THREADS overrides per-model YAML threads)
+[[ -f "$ROOT/config/server.env" ]] && set -a && source "$ROOT/config/server.env" && set +a
+
 LLAMA_SERVER="${LLAMACPP_SERVER_BIN:-$ROOT/external/llama.cpp/build-cuda/bin/llama-server}"
 if [[ ! -x "$LLAMA_SERVER" && "$LLAMA_SERVER" != /* ]]; then
   LLAMA_SERVER="$ROOT/$LLAMA_SERVER"
@@ -52,6 +55,8 @@ fi
 set -a
 eval "$("$ROOT/scripts/load_model_config.sh" "$model_key")"
 set +a
+# config/server.env override for CPU threads (overrides YAML when set)
+[[ -n "${LLAMA_THREADS:-}" ]] && THREADS="$LLAMA_THREADS"
 
 MODEL_PATH="$ROOT/models/${model_key}/${GGUF}"
 if [[ ! -f "$MODEL_PATH" ]]; then

@@ -7,7 +7,7 @@ download_url: "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF"
 
 context_size: 0
 n_gpu_layers: -1
-threads: 28
+# threads: 24
 jinja: true
 # Tool-calling (Unsloth): temp 0.7, top_p 1.0
 temp: 0.7

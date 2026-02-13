@@ -7,7 +7,7 @@ download_url: "https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF"
 
 context_size: 32768
 n_gpu_layers: -1
-threads: 28
+# threads: 28
 jinja: true
 temp: 0.7
 top_p: 0.95

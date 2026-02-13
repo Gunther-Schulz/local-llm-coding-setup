@@ -22,7 +22,7 @@ Scenarios are defined in **scenarios.cfg** and mirror **config/models/*.yaml**: 
 ## Layout
 
 - **scenarios.cfg** – Scenario list: `scenario_name|model_key|moe_ot|cache_k|n_gpu_layers[|api_model]`. **model_key** = `config/models/<model_key>.yaml` (same as ACTIVE_MODEL in main stack). n_gpu_layers: empty = use YAML; 0 = CPU; integer or 25%/50%/75% = override.
-- **run_server.sh** – Loads config via `scripts/load_model_config.sh <model_key>`, starts llama-server (port 18999). Context/temp/top_p etc. from YAML; override with **BENCHMARK_CTX=131072** for 128K.
+- **run_server.sh** – Loads config via `scripts/load_model_config.sh <model_key>`, starts llama-server (port 18999). Sources **config/server.env**; **LLAMA_THREADS** from server.env overrides per-model YAML threads (same as main run_server.sh). **BENCHMARK_THREADS** overrides for one run. Context/temp/top_p etc. from YAML; override with **BENCHMARK_CTX=131072** for 128K.
 - **fill_context.sh** – Build long prompt for long-context tests.
 - **measure.py** – Call `/v1/chat/completions`, report tokens and tok/s; with long prompt uses streaming and reports **gen_tok_s** (generation/decode speed). Use `--model` for non-default backends.
 - **benchmark.py** – Main benchmark logic: start server → measure → stop; writes **results.txt**. Short column = tok/s; Long column = **gen/s** (decode speed). After each scenario prints **memory stats** (VRAM vs RAM from llama-server’s exit breakdown). Options: `--long`, `--short-only`, `--ctx 128k`, `--no-cpu`, and optional scenario name.

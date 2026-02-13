@@ -5,7 +5,7 @@ download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
 
 context_size: 180000
 n_gpu_layers: -1
-threads: 28
+# threads: 28
 jinja: true
 # temp: 1.0
 temp: 1.0
