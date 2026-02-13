@@ -15,3 +15,4 @@ min_p: 0.01
 seed: 3407
 batch_size: 4096
 ubatch_size: 4096
+chat_template_file: external/llama.cpp/models/templates/Qwen3-Coder.jinja

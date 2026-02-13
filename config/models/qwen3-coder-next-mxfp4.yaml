@@ -3,7 +3,7 @@
 gguf: Qwen3-Coder-Next-MXFP4_MOE.gguf
 download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
 
-context_size: 131072
+context_size: 180000
 n_gpu_layers: -1
 threads: 28
 jinja: true
@@ -15,3 +15,5 @@ min_p: 0.01
 seed: 3407
 batch_size: 4096
 ubatch_size: 4096
+# Use known-good template for tool-calling (avoids GGUF metadata; reduces tool-call loops)
+chat_template_file: external/llama.cpp/models/templates/Qwen3-Coder.jinja

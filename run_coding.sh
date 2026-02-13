@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Mode 2: Coding. One LLM; Cursor talks to server (or to proxy when ready — run start-proxy.sh separately).
-# Proxy not started automatically yet; when ready, run: BACKEND_URL=http://HOST:8001 PROXY_PORT=8010 ./start-proxy.sh
+# Mode 2: Coding. One LLM; Cursor can talk to server (8001) or to proxy (8010) for tool_choice=required.
+# With proxy: run ./run_coding.sh (server), then ./start-proxy.sh (proxy). Point Cursor at http://HOST:8010.
 # Usage: ./run_coding.sh
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

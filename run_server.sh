@@ -39,6 +39,15 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   echo "Model not found: $MODEL_PATH" >&2
   exit 1
 fi
+# Optional mmproj (vision model)
+MMPROJ_PATH=""
+if [[ -n "$MMPROJ" ]]; then
+  MMPROJ_PATH="$ROOT/models/${ACTIVE_MODEL}/${MMPROJ}"
+  if [[ ! -f "$MMPROJ_PATH" ]]; then
+    echo "mmproj not found: $MMPROJ_PATH" >&2
+    exit 1
+  fi
+fi
 
 # Binary
 LLAMA_SERVER="${LLAMACPP_SERVER_BIN:-$ROOT/external/llama.cpp/build-cuda/bin/llama-server}"
@@ -53,6 +62,7 @@ fi
 
 # Build argv (host, port, n_gpu_layers, jinja from config)
 argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-layers "${N_GPU_LAYERS:--1}" -c "${CONTEXT_SIZE:-262144}")
+[[ -n "$MMPROJ_PATH" ]] && argv+=(--mmproj "$MMPROJ_PATH")
 [[ -n "$THREADS" ]] && argv+=(--threads "$THREADS")
 [[ "${JINJA:-1}" =~ ^(1|true|on|yes)$ ]] && argv+=(--jinja)
 [[ -n "$TEMP" ]]    && argv+=(--temp "$TEMP")
@@ -62,7 +72,16 @@ argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-laye
 [[ -n "$SEED" ]]    && argv+=(--seed "$SEED")
 [[ -n "$BATCH_SIZE" ]]  && argv+=(--batch-size "$BATCH_SIZE")
 [[ -n "$UBATCH_SIZE" ]] && argv+=(--ubatch-size "$UBATCH_SIZE")
+# Optional chat template override (e.g. Qwen3 Coder tool-calling fix)
+if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
+  if [[ "$CHAT_TEMPLATE_FILE" != /* ]]; then
+    CHAT_TEMPLATE_FILE="$ROOT/$CHAT_TEMPLATE_FILE"
+  fi
+  if [[ -f "$CHAT_TEMPLATE_FILE" ]]; then
+    argv+=(--chat-template-file "$CHAT_TEMPLATE_FILE")
+  fi
+fi
 
-echo "port=${PORT} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")"
+echo "port=${PORT} ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")${MMPROJ_PATH:+ mmproj=$(basename "$MMPROJ_PATH")}"
 echo "API: http://${HOST:-127.0.0.1}:${PORT}/v1"
 exec "$LLAMA_SERVER" "${argv[@]}"

@@ -30,6 +30,7 @@ with open(path) as f:
 # Map YAML keys to env vars run_server expects (UPPERCASE)
 mapping = [
     ("gguf", "GGUF"),
+    ("mmproj", "MMPROJ"),  # optional; vision model projector (llama-server --mmproj)
     ("context_size", "CONTEXT_SIZE"),
     ("n_gpu_layers", "N_GPU_LAYERS"),
     ("threads", "THREADS"),
@@ -41,6 +42,7 @@ mapping = [
     ("seed", "SEED"),
     ("batch_size", "BATCH_SIZE"),
     ("ubatch_size", "UBATCH_SIZE"),
+    ("chat_template_file", "CHAT_TEMPLATE_FILE"),  # optional; llama-server --chat-template-file (e.g. Qwen3 Coder)
 ]
 for yk, ev in mapping:
     v = data.get(yk)
