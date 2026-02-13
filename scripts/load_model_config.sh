@@ -39,6 +39,7 @@ mapping = [
     ("top_p", "TOP_P"),
     ("top_k", "TOP_K"),
     ("min_p", "MIN_P"),
+    ("repeat_penalty", "REPEAT_PENALTY"),  # optional; 1.0 = disabled (required for GLM-4.7-Flash)
     ("seed", "SEED"),
     ("batch_size", "BATCH_SIZE"),
     ("ubatch_size", "UBATCH_SIZE"),

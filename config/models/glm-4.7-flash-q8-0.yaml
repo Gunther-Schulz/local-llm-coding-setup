@@ -1,0 +1,26 @@
+# Loaded when ACTIVE_MODEL=glm-4.7-flash-q8-0 (in config/server.env). Same name as this file.
+# Unsloth GLM-4.7-Flash Q8_0, ~31.8 GB. 30B-A3B MoE.
+# Unsloth: repeat_penalty 1.0 (disable); temp 1.0 / top-p 0.95 (general); temp 0.7 / top-p 1.0 (tool-calling); min-p 0.01; jinja; ctx max 202752.
+# llama.cpp: do not use --cache-reuse with this model. See KNOWN_ISSUES.md for other GLM + llama.cpp quirks.
+gguf: GLM-4.7-Flash-Q8_0.gguf
+download_url: "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF"
+
+context_size: 0
+n_gpu_layers: -1
+threads: 28
+jinja: true
+# Tool-calling (Unsloth): temp 0.7, top_p 1.0
+temp: 0.7
+top_p: 1.0
+# General use (Unsloth): temp 1.0, top_p 0.95
+# temp: 1.0
+# top_p: 0.95
+top_k: 40
+min_p: 0.01
+repeat_penalty: 1.0
+seed: 3407
+batch_size: 4096
+ubatch_size: 4096
+# Proxy: only force tool_choice=required (avoid grammar trigger bug); loop limits off
+proxy_force_tool_choice_required: true
+proxy_loop_limits: false

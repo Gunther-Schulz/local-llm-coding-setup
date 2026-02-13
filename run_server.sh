@@ -69,6 +69,7 @@ argv=(-m "$MODEL_PATH" --host "${HOST:-127.0.0.1}" --port "${PORT}" --n-gpu-laye
 [[ -n "$TOP_P" ]]   && argv+=(--top-p "$TOP_P")
 [[ -n "$TOP_K" ]]   && argv+=(--top-k "$TOP_K")
 [[ -n "$MIN_P" ]]   && argv+=(--min-p "$MIN_P")
+[[ -n "$REPEAT_PENALTY" ]] && argv+=(--repeat-penalty "$REPEAT_PENALTY")
 [[ -n "$SEED" ]]    && argv+=(--seed "$SEED")
 [[ -n "$BATCH_SIZE" ]]  && argv+=(--batch-size "$BATCH_SIZE")
 [[ -n "$UBATCH_SIZE" ]] && argv+=(--ubatch-size "$UBATCH_SIZE")

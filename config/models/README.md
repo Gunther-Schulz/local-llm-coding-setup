@@ -19,7 +19,12 @@ Each file is `config/models/<model_key>.yaml`. The **model_key** is the filename
 - **jinja** – Use Jinja chat template (boolean).
 - **temp**, **top_p**, **top_k**, **min_p**, **seed** – Sampling.
 - **batch_size**, **ubatch_size** – Batch sizes (optional).
-- **proxy** – Optional: `compression`, `virtual_tool`, `inject_system`, `inject_capability` (0/1).
+- **chat_template_file** – Optional path to a chat template (e.g. `config/templates/Qwen3-Coder-tool-fix.jinja`). Used by `run_server.sh` only.
+- **repeat_penalty** – Optional; e.g. `1.0` to disable (used by GLM-4.7-Flash). Used by `run_server.sh` only.
+
+**Used by the chat proxy** (when request `model` matches this file’s key; default: both off):
+- **proxy_force_tool_choice_required** – If `true`, set `tool_choice` to `"required"` when the request has tools (avoids grammar trigger bug with GLM).
+- **proxy_loop_limits** – If `true`, inject stop after N identical/similar tool calls (uses `PROXY_MAX_IDENTICAL_TOOL_CALLS`, `PROXY_MAX_SIMILAR_TOOL_CALLS` from env).
 
 Set per-mode model keys in `config/server.env` (PURE_CHAT_MODEL, CODING_MODEL, EMBEDDING_MODEL, NOTEBOOK_CHAT_MODEL, CODE_VISION_VISION_MODEL). Mode 4 coding uses CODING_MODEL. Run with `./run_chat.sh`, `./run_coding.sh`, `./run_notebook.sh`, or `./run_code_vision.sh`; or start one server with `./run_server.sh MODEL_KEY [PORT]`.
 
