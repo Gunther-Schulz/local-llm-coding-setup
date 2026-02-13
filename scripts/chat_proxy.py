@@ -99,10 +99,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
                 self.send_response(resp.status)
                 for k, v in resp.headers.items():
-                    if k.lower() not in ("transfer-encoding", "connection"):
+                    if k.lower() not in ("transfer-encoding", "connection", "content-length"):
                         self.send_header(k, v)
-                if chunked:
-                    self.send_header("Transfer-Encoding", "chunked")
+                # Do NOT forward Transfer-Encoding: chunked — Cursor expects raw SSE (data: ...\n\n).
+                # Stream raw body bytes so the client sees "data: " from the first byte.
                 self.end_headers()
 
                 if chunked:
@@ -117,10 +117,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         if DEBUG and chunk_num <= 3:
                             preview = chunk[:500].decode("utf-8", errors="replace").replace("\r", " ").replace("\n", " ")
                             _debug("<<< STREAM CHUNK #%d %d bytes: %s%s", chunk_num, len(chunk), preview, "..." if len(chunk) > 500 else "")
-                        self.wfile.write(("%x\r\n" % len(chunk)).encode() + chunk + b"\r\n")
+                        self.wfile.write(chunk)
                     if DEBUG:
                         _debug("<<< STREAM END: %d chunks, %d bytes total", chunk_num, total)
-                    self.wfile.write(b"0\r\n\r\n")
                 else:
                     raw = resp.read()
                     if DEBUG:

@@ -79,6 +79,7 @@ if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
   fi
   if [[ -f "$CHAT_TEMPLATE_FILE" ]]; then
     argv+=(--chat-template-file "$CHAT_TEMPLATE_FILE")
+    echo "chat_template_file=$(basename "$CHAT_TEMPLATE_FILE")"
   fi
 fi
 
