@@ -4,8 +4,9 @@ from __future__ import annotations
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from .config import ProxyConfig, load_config
-from .router import get_backend_url
+from .router import get_backend_url, request_has_image
 from .forward import forward, log
+from .vision_step import get_vision_description, build_coding_body_with_description
 
 
 def make_handler(config: ProxyConfig, debug: bool = False) -> type[BaseHTTPRequestHandler]:
@@ -32,18 +33,38 @@ def make_handler(config: ProxyConfig, debug: bool = False) -> type[BaseHTTPReque
             self._handle("HEAD", None)
 
         def _handle(self, method: str, body: bytes | None) -> None:
-            backend_url = get_backend_url(
-                method, self.path, body, config
-            )
-            forward(
-                self,
-                backend_url,
-                method,
-                self.path,
-                dict(self.headers),
-                body,
-                debug=debug,
-            )
+            headers = dict(self.headers)
+            path = self.path
+
+            # Two-step Code+Vision: image request → vision (describe, no tools) → coding (with description)
+            if (
+                method == "POST"
+                and path.rstrip("/").endswith("/v1/chat/completions")
+                and body
+                and config.is_code_vision
+                and config.vision_url
+                and config.coding_url
+                and request_has_image(body)
+            ):
+                description, user_text = get_vision_description(
+                    config.vision_url, body, headers, debug=debug
+                )
+                new_body = build_coding_body_with_description(body, description, user_text)
+                if debug:
+                    log("vision_step: description len=%d -> coding", len(description))
+                forward(
+                    self,
+                    config.coding_url,
+                    method,
+                    path,
+                    headers,
+                    new_body,
+                    debug=debug,
+                )
+                return
+
+            backend_url = get_backend_url(method, path, body, config)
+            forward(self, backend_url, method, path, headers, body, debug=debug)
 
     return _Handler
 
