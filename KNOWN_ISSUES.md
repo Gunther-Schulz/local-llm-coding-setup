@@ -77,12 +77,3 @@ chat_template_file: config/templates/GLM-4-tool.jinja
 
 That template injects tool definitions in GLM’s format and removes the warning. Our GLM configs have this line commented; uncomment if you want native tool description.
 
----
-
-## 6. Alternative: use the vLLM backend for GLM
-
-If tool calling with GLM on llama-server remains unreliable, you can switch to the **vLLM** backend for the same family of models. We provide a vLLM-based config, for example:
-
-- **config/models/glm-4.7-flash-vllm.yaml** — GLM-4.7-Flash via vLLM (`backend: vllm`, `vllm_tool_call_parser: glm47`).
-
-Set `CODING_MODEL=glm-4.7-flash-vllm` (or the relevant mode variable) in `config/server.env` and run your launcher as usual. Requires a conda env with vLLM installed (see **docs/VLLM_BACKEND_PLAN.md** and **config/models/README.md**).

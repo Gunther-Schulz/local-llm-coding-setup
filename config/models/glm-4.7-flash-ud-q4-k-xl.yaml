@@ -2,7 +2,7 @@
 # Unsloth GLM-4.7-Flash UD-Q4_K_XL (best Q4), ~17.5 GB. 30B-A3B MoE. See KNOWN_ISSUES.md (llama.cpp).
 download_url: "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF"
 
-backend: vllm
+backend: llama
 
 # Shared (both backends)
 temp: 0.7

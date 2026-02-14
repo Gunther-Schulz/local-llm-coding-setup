@@ -51,6 +51,8 @@ BACKEND="${BACKEND:-llama}"
 mkdir -p "$ROOT/logs"
 SERVER_LOG="$ROOT/logs/server.log"
 rm -f "$SERVER_LOG"
+# Optional: keep only last N lines (e.g. 50000) so log doesn't grow unbounded with --verbose (set in config/server.env)
+SERVER_LOG_TAIL_LINES="${SERVER_LOG_TAIL_LINES:-}"
 
 # -------- vLLM backend --------
 if [[ "${BACKEND}" == "vllm" ]]; then
@@ -110,7 +112,10 @@ argv=(-m "$MODEL_PATH" --alias "$MODEL_ALIAS" --host "${HOST:-127.0.0.1}" --port
 [[ -n "$CACHE_TYPE_K" ]] && argv+=(--cache-type-k "$CACHE_TYPE_K")
 [[ -n "$CACHE_TYPE_V" ]] && argv+=(--cache-type-v "$CACHE_TYPE_V")
 [[ -n "$VERBOSE" ]]     && argv+=(--verbose)
-argv+=(--log-file "$SERVER_LOG")
+# When using tail wrapper we capture stdout/stderr only; do not add --log-file (would duplicate and grow unbounded)
+if [[ -z "$SERVER_LOG_TAIL_LINES" || ! "$SERVER_LOG_TAIL_LINES" =~ ^[0-9]+$ ]]; then
+  argv+=(--log-file "$SERVER_LOG")
+fi
 # Optional chat template override (e.g. Qwen3 Coder tool-calling fix)
 if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
   if [[ "$CHAT_TEMPLATE_FILE" != /* ]]; then
@@ -124,5 +129,11 @@ fi
 
 echo "port=${PORT} backend=llama ctx=${CONTEXT_SIZE:-262144} model=$(basename "$MODEL_PATH")${MMPROJ_PATH:+ mmproj=$(basename "$MMPROJ_PATH")}${VERBOSE:+ verbose=1}"
 echo "log=$SERVER_LOG"
+[[ -n "$SERVER_LOG_TAIL_LINES" ]] && echo "log_tail_lines=$SERVER_LOG_TAIL_LINES"
 echo "API: http://${HOST:-127.0.0.1}:${PORT}/v1  (use in Cursor: $MODEL_ALIAS)"
-exec "$LLAMA_SERVER" "${argv[@]}"
+# Server output (stdout/stderr, including --verbose) only to log file; terminal stays clean
+if [[ -n "$SERVER_LOG_TAIL_LINES" && "$SERVER_LOG_TAIL_LINES" =~ ^[0-9]+$ ]]; then
+  exec "$LLAMA_SERVER" "${argv[@]}" 2>&1 | "$ROOT/scripts/keep_last_n_log.sh" "$SERVER_LOG" "$SERVER_LOG_TAIL_LINES" 500
+else
+  exec "$LLAMA_SERVER" "${argv[@]}" >> "$SERVER_LOG" 2>&1
+fi
