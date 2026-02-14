@@ -1,9 +1,0 @@
-# vLLM backend for GLM-4.7-Flash. Use CODING_MODEL=glm-4.7-flash-vllm in config/server.env.
-# Model: HuggingFace safetensors (zai-org/GLM-4.7-Flash) or use a local GGUF path + vllm_tokenizer.
-backend: vllm
-vllm_model: zai-org/GLM-4.7-Flash
-vllm_tool_call_parser: glm47
-vllm_max_model_len: 202752
-vllm_tokenizer: zai-org/GLM-4.7-Flash
-temp: 0.7
-top_p: 1.0

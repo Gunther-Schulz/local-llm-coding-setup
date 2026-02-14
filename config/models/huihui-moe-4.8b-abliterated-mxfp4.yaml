@@ -1,16 +1,18 @@
 # Loaded when ACTIVE_MODEL=huihui-moe-4.8b-abliterated-mxfp4 (in config/server.env). Same name as this file.
 # Huihui MoE 4.8B abliterated, MXFP4_MOE. Params below match huihui-ai recommendation.
-gguf: Huihui-MoE-4.8B-A1.7B-abliterated-MXFP4_MOE.gguf
 download_url: "https://huggingface.co/noctrex/Huihui-MoE-4.8B-A1.7B-abliterated-MXFP4_MOE-GGUF/resolve/main/Huihui-MoE-4.8B-A1.7B-abliterated-MXFP4_MOE.gguf"
 
-context_size: 32768
-n_gpu_layers: -1
-# threads: 28
-jinja: true
+backend: llama
 temp: 0.6
 top_p: 0.95
 top_k: 20
 min_p: 0.01
-seed: 3407
-batch_size: 2048
-ubatch_size: 512
+
+llama:
+  gguf: Huihui-MoE-4.8B-A1.7B-abliterated-MXFP4_MOE.gguf
+  context_size: 32768
+  n_gpu_layers: -1
+  jinja: true
+  seed: 3407
+  batch_size: 2048
+  ubatch_size: 512

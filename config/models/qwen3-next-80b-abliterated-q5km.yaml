@@ -1,20 +1,18 @@
 # Loaded when ACTIVE_MODEL=qwen3-next-80b-abliterated-q5km (in config/server.env). Same name as this file.
 # Q5_K_M abliterated, ~56.7 GB single file. Partial offload automatic; reduce n_gpu_layers if OOM.
-gguf: Qwen3-Next-80B-A3B-Instruct-abliterated.Q5_K_M.gguf
 download_url: "https://huggingface.co/mradermacher/Qwen3-Next-80B-A3B-Instruct-abliterated-GGUF/resolve/main/Qwen3-Next-80B-A3B-Instruct-abliterated.Q5_K_M.gguf"
 
-context_size: 131072
-n_gpu_layers: -1
-# threads: 28
-jinja: true
-# temp: 0
+backend: llama
 temp: 1.0
 top_p: 0.95
 top_k: 40
 min_p: 0.01
-seed: 3407
-# Higher batch for throughput on high-VRAM GPUs (e.g. RTX 5090); revert to 4096 if OOM or no gain
-batch_size: 8192
-ubatch_size: 8192
-# batch_size: 4096
-# ubatch_size: 4096
+
+llama:
+  gguf: Qwen3-Next-80B-A3B-Instruct-abliterated.Q5_K_M.gguf
+  context_size: 131072
+  n_gpu_layers: -1
+  jinja: true
+  seed: 3407
+  batch_size: 8192
+  ubatch_size: 8192

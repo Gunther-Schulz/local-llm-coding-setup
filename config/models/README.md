@@ -43,7 +43,8 @@ vllm:
 - **vllm** (dict) – vLLM-only options: `model`, `tool_call_parser`, `max_model_len`, `tensor_parallel`, `gpu_memory_utilization`, `serve_extra`, `tokenizer`.
 - **gguf** (under `llama` or flat) – GGUF filename or path. Full path is `models/<model_key>/<gguf>`. Ignored when `backend: vllm`.
 - **mmproj** (under `llama` or flat) – Optional. Vision model projector GGUF filename. Full path is `models/<model_key>/<mmproj>`.
-- **download_url** – Hugging Face repo URL. Top-level only; for docs/download scripts.
+- **download_url** – Hugging Face repo URL (or direct `.../resolve/main/...gguf` link). Top-level. Used by `scripts/download-models.sh` to fetch the main GGUF and any extra files.
+- **download_extra** – Optional. List of additional filenames to download from the same repo, e.g. `[ "mmproj-model-Q8_0.gguf" ]` or `[ "subdir/tokenizer.json" ]`. The downloader also auto-includes `llama.mmproj` when set (vision models). Same repo as `download_url`; paths are relative to repo root.
 - **context_size**, **n_gpu_layers**, **jinja**, **repeat_penalty**, **seed**, **batch_size**, **ubatch_size**, **chat_template_file**, **flash_attn**, **cache_type_k**, **cache_type_v** – Under `llama` (or flat). See KNOWN_ISSUES.md for GLM + llama.cpp.
 - **temp**, **top_p**, **top_k**, **min_p** – Shared; top-level. Sampling.
 - **model** (under `vllm` or flat `vllm_model`) – Model to load: HuggingFace id, local GGUF path, or `repo_id:quant_type`. Passed to `vllm serve`.

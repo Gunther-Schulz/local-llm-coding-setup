@@ -7,7 +7,7 @@ Only one mode is active at a time. Configure each mode in **config/server.env**;
 | **1. Pure chat** | `./run_chat.sh` | One LLM on 8001 | `http://HOST:8001/v1` or proxy (if `PURE_CHAT_PROXY_PORT` set) |
 | **2. Coding** | `./run_coding.sh` | One LLM on 8001 + proxy on 8010 | Cursor → proxy (8010) → backend (8001) |
 | **3. Notebook LM** | `./run_notebook.sh` | One llama-server (router mode) on 8001 | Same port: `model=bge-m3` for embeddings, `model=notebook-chat` for chat |
-| **4. Code + Vision** | `./run_code_vision.sh` | Vision on 8002 + coding on 8001 (like Mode 3: two models) | Vision: `http://HOST:8002/v1`; coding: `http://HOST:8001/v1` (proxy can combine: image → vision, then coding) |
+| **4. Code + Vision** | `./run_code_vision.sh` + `./start-proxy.sh` | Vision on 8002 + coding on 8001 + proxy on 8010 | Cursor → proxy (8010): image in request → vision (8002), else → coding (8001) |
 
 ## Core
 
@@ -24,8 +24,11 @@ Only one mode is active at a time. Configure each mode in **config/server.env**;
 
 ## Proxy
 
-- **start-proxy.sh** – Tool proxy. With no args, uses `config/server.env` and env `BACKEND_URL` (default `http://HOST:8001`), `PROXY_PORT` (default 8010).  
-  Launchers set these when they call the proxy (e.g. run_coding.sh sets `BACKEND_URL` and `PROXY_PORT`).
+- **proxy/** – Python package: config (from `config/server.env`), router (image detection → vision vs coding), forward (HTTP forward), server (HTTPServer).  
+  **Single mode:** one backend (`BACKEND_URL`, default `http://HOST:8001`).  
+  **Code + Vision mode:** when `CODE_VISION_VISION_PORT` and `CODE_VISION_CODING_PORT` are set, POST `/v1/chat/completions` with an image in the body is forwarded to the vision server; all other requests to the coding server.  
+  Run: `python -m proxy [--debug]`.
+- **start-proxy.sh** – Starts the proxy. Sources `config/server.env`; sets `BACKEND_URL`, `PROXY_PORT` (8010). Usage: `./start-proxy.sh [--debug]`. Point Cursor at `http://HOST:8010/v1`.
 
 ## Chat CLI
 

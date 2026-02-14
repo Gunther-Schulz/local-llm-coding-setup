@@ -1,21 +1,19 @@
 # Loaded when ACTIVE_MODEL=qwen3-coder-next-ud-q4-k-xl (in config/server.env). Same name as this file.
 # Unsloth Dynamic Q4 K XL: ~48.5 GB single file. High-quality 4-bit; partial offload is automatic when model exceeds VRAM.
-gguf: Qwen3-Coder-Next-UD-Q4_K_XL.gguf
 download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
 
-context_size: 131072
-n_gpu_layers: -1
-# threads: 28
-jinja: true
-# temp: 1.0
+backend: llama
 temp: 0
 top_p: 0.95
 top_k: 40
 min_p: 0.01
-seed: 3407
-# Higher batch for throughput on high-VRAM GPUs (e.g. RTX 5090); revert to 4096 if OOM or no gain
-batch_size: 8192
-ubatch_size: 8192
-# batch_size: 4096
-# ubatch_size: 4096
-chat_template_file: config/templates/Qwen3-Coder-tool-fix.jinja
+
+llama:
+  gguf: Qwen3-Coder-Next-UD-Q4_K_XL.gguf
+  context_size: 131072
+  n_gpu_layers: -1
+  jinja: true
+  seed: 3407
+  batch_size: 8192
+  ubatch_size: 8192
+  chat_template_file: config/templates/Qwen3-Coder-tool-fix.jinja

@@ -2,6 +2,10 @@
 # Download all models from config/models/*.yaml using aria2 (resume on interrupt, skip existing).
 # Requires: aria2c, curl, python3, PyYAML. Usage: ./scripts/download-models.sh [MODEL_KEY ...]
 #   No args = download all models that have a download_url. Optional args = only those model_key(s).
+#
+# Per-model YAML: download_url (repo or direct .gguf link). gguf (and mmproj) from top-level or llama:.
+# If llama.mmproj is set, it is downloaded from the same repo. Optional download_extra: [ "file.gguf", ... ]
+# for any other required files from the same repo (e.g. vision mmproj, tokenizer, etc.).
 
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,17 +43,28 @@ get_model_keys() {
   done
 }
 
-# Read download_url and gguf from a model YAML. Output: download_url|gguf (one line).
+# Read download_url, gguf, and extra required files from a model YAML.
+# Output: download_url|gguf|extra1,extra2,... (extras = mmproj if set, plus download_extra list).
+# gguf/mmproj can be top-level or under llama:.
 read_model_download() {
   python3 - "$1" << 'PY'
 import sys, yaml
 path = sys.argv[1]
 with open(path) as f:
     data = yaml.safe_load(f) or {}
-url = data.get("download_url") or ""
-gguf = data.get("gguf") or ""
-if url and str(url).strip().lower() not in ("none", ""):
-    print(f"{url}|{gguf}")
+url = (data.get("download_url") or "").strip()
+if not url or url.lower() == "none":
+    sys.exit(0)
+llama = data.get("llama") if isinstance(data.get("llama"), dict) else {}
+gguf = (data.get("gguf") or llama.get("gguf") or "").strip()
+extras = []
+if llama.get("mmproj"):
+    extras.append(str(llama["mmproj"]).strip())
+for f in data.get("download_extra") or []:
+    if f and str(f).strip() and str(f).strip() not in extras:
+        extras.append(str(f).strip())
+extras_str = ",".join(extras)
+print(f"{url}|{gguf}|{extras_str}")
 PY
 }
 
@@ -99,7 +114,7 @@ while read -r model_key; do
   fi
   line=$(read_model_download "$yaml_file") || true
   [[ -z "$line" ]] && echo "Model: $model_key (no download_url), skip" && echo "" && continue
-  IFS='|' read -r download_url gguf <<< "$line"
+  IFS='|' read -r download_url gguf extras <<< "$line"
   dest_dir="$ROOT/models/${model_key}"
   echo "Model: $model_key -> $dest_dir"
 
@@ -114,7 +129,7 @@ while read -r model_key; do
   else
     # Repo URL: download the file(s) for this model. If gguf is multi-shard (e.g. -00001-of-00003.gguf), download all shards.
     if [[ -z "$gguf" ]]; then
-      echo "  skip: repo URL but no 'gguf' filename in config, cannot choose a file"
+      echo "  skip: repo URL but no 'gguf' filename in config (set under llama: or top-level), cannot choose a file"
     else
       if [[ "$gguf" =~ ^(.+)-([0-9]+)-of-([0-9]+)\.gguf$ ]]; then
         # Multi-shard: base name, shard index, total (zero-padded). Download shards 1..total.
@@ -140,6 +155,20 @@ while read -r model_key; do
           echo "  skip: could not resolve URL for $gguf"
         fi
       fi
+    fi
+    # Extra required files (e.g. mmproj for vision; or download_extra list in YAML). Same repo.
+    if [[ -n "$extras" ]]; then
+      IFS=',' read -ra extra_files <<< "$extras"
+      for outname in "${extra_files[@]}"; do
+        outname=$(echo "$outname" | tr -d ' ')
+        [[ -z "$outname" ]] && continue
+        url=$(resolve_hf_url "$download_url" "$outname")
+        if [[ -n "$url" ]]; then
+          download_one "$url" "$dest_dir" "$outname"
+        else
+          echo "  skip: could not resolve URL for $outname"
+        fi
+      done
     fi
   fi
   echo ""

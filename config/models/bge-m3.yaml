@@ -1,18 +1,18 @@
 # Loaded when ACTIVE_MODEL=bge-m3 (in config/server.env). Same name as this file.
 # BGE-M3 embedding (BAAI), FP16 ~1.2 GB. Max sequence 8192 tokens; dense + sparse + multi-vector. For vector/semantic search.
-gguf: bge-m3-FP16.gguf
 download_url: "https://huggingface.co/gpustack/bge-m3-GGUF"
 
-# BAAI spec: max 8192 tokens. Use smaller -c to speed up if inputs are short.
-context_size: 8192
-n_gpu_layers: -1
-# threads: 28
-jinja: true
+backend: llama
 temp: 0
 top_p: 1.0
 top_k: 40
 min_p: 0.01
-seed: 3407
-# FlagEmbedding example batch_size=12; M3Embedder default 256. 256 keeps memory predictable.
-batch_size: 256
-ubatch_size: 256
+
+llama:
+  gguf: bge-m3-FP16.gguf
+  context_size: 8192
+  n_gpu_layers: -1
+  jinja: true
+  seed: 3407
+  batch_size: 256
+  ubatch_size: 256
