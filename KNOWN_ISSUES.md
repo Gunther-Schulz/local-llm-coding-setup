@@ -49,9 +49,11 @@ See also **config/templates/README.md** (section “Grammar still awaiting trigg
 
 ## 4. High CPU when model is partly offloaded
 
+**Not a bug.** When the model does not fully fit in VRAM, llama.cpp puts the remaining layers on the CPU and runs their full forward pass (attention + FFN) there. High CPU usage is the expected side effect of that design.
+
 **Symptom:** Very high CPU usage when the GLM model does not fully fit in VRAM and some layers run on CPU.
 
-**Cause:** Partially offloaded GLM with default server options can stress the CPU.
+**Cause:** Those layers run their compute on the CPU; the more layers (or threads) used for them, the higher the CPU load. This is how llama.cpp partial offload works, not a defect.
 
 **Mitigation (optional):** In the model YAML you can try:
 
