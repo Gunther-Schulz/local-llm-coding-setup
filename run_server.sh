@@ -132,9 +132,10 @@ echo "log=$SERVER_LOG"
 [[ -n "$SERVER_LOG_TAIL_LINES" ]] && echo "log_tail_lines=$SERVER_LOG_TAIL_LINES"
 echo "API: http://${HOST:-127.0.0.1}:${PORT}/v1  (use in Cursor: $MODEL_ALIAS)"
 # Server output (stdout/stderr, including --verbose) only to log file; terminal stays clean
-# Tail wrapper (when SERVER_LOG_TAIL_LINES set) pipes through keep_last_n_log.sh and buffers output; bypassed so log updates in real time.
-# if [[ -n "$SERVER_LOG_TAIL_LINES" && "$SERVER_LOG_TAIL_LINES" =~ ^[0-9]+$ ]]; then
-#   exec "$LLAMA_SERVER" "${argv[@]}" 2>&1 | "$ROOT/scripts/keep_last_n_log.sh" "$SERVER_LOG" "$SERVER_LOG_TAIL_LINES" 500
-# else
+# When SERVER_LOG_TAIL_LINES is set: pipe through keep_last_n_log.sh to cap log size (no --log-file).
+# Else: write directly to log (--log-file already added above).
+if [[ -n "$SERVER_LOG_TAIL_LINES" && "$SERVER_LOG_TAIL_LINES" =~ ^[0-9]+$ ]]; then
+  exec "$LLAMA_SERVER" "${argv[@]}" 2>&1 | "$ROOT/scripts/keep_last_n_log.sh" "$SERVER_LOG" "$SERVER_LOG_TAIL_LINES" 1
+else
   exec "$LLAMA_SERVER" "${argv[@]}" >> "$SERVER_LOG" 2>&1
-# fi
+fi

@@ -1,6 +1,7 @@
 # ACTIVE_MODEL=glm-4.7-flash-ud-q6-k-xl. Switch backend: llama (default) or vllm.
 # Unsloth GLM-4.7-Flash UD-Q6_K_XL, ~26.2 GB. 30B-A3B MoE. See KNOWN_ISSUES.md (llama.cpp).
 download_url: "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF"
+gguf: GLM-4.7-Flash-UD-Q6_K_XL.gguf
 
 backend: llama
 

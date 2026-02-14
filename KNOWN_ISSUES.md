@@ -101,3 +101,5 @@ That template injects tool definitions in GLM's format and removes the warning.
 
 - **RAM/grammar issue (§3):** Documented only; not mitigated in this repo (our proxy has no such feature). Root cause remains in upstream llama.cpp (#19068).
 
+- **32 GB max context (§6):** No reliable numbers; documented that users should tune `max_model_len` / `context_size` empirically.
+

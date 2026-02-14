@@ -6,16 +6,17 @@
 # Usage: some_command 2>&1 | keep_last_n_log.sh LOG_FILE [MAX_LINES] [FLUSH_EVERY]
 #   LOG_FILE    = path to output log (e.g. logs/server.log)
 #   MAX_LINES   = max lines to keep (default: 50000)
-#   FLUSH_EVERY = write to LOG_FILE every this many lines (default: 500)
+#   FLUSH_EVERY = write to LOG_FILE every this many lines (default: 1 = every line).
+#                 Keeps server.log in sync with live output so "tail" shows the real end.
 #
 # Env: SERVER_LOG_TAIL_LINES overrides MAX_LINES if set.
 set -e
 LOG_FILE="${1:?Usage: keep_last_n_log.sh LOG_FILE [MAX_LINES] [FLUSH_EVERY]}"
 MAX_LINES="${2:-${SERVER_LOG_TAIL_LINES:-50000}}"
-FLUSH_EVERY="${3:-500}"
+FLUSH_EVERY="${3:-1}"
 
 [[ "$MAX_LINES" =~ ^[0-9]+$ ]] || MAX_LINES=50000
-[[ "$FLUSH_EVERY" =~ ^[0-9]+$ ]] || FLUSH_EVERY=500
+[[ "$FLUSH_EVERY" =~ ^[0-9]+$ ]] || FLUSH_EVERY=1
 
 BUF_FILE="${LOG_FILE}.buf"
 rm -f "$BUF_FILE"
