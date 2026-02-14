@@ -17,7 +17,3 @@ llama:
   batch_size: 4096
   ubatch_size: 4096
   chat_template_file: config/templates/Qwen3-Coder-tool-fix.jinja
-
-# Proxy (when request model matches this file name): enable tool_choice=required + loop limits
-proxy_force_tool_choice_required: true
-proxy_loop_limits: true

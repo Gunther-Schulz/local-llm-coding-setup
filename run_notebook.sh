@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Mode 3: Notebook LM via llama-server router mode. One process, embedding + chat on one port.
 # Uses --models-dir; clients use model= bge-m3 (embeddings) and notebook-chat (chat).
-# Usage: ./run_notebook.sh [--verbose]
+# Usage: ./run_notebook.sh [--verbose] [--no-log-buffer]
 
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,8 +16,10 @@ source "$ROOT/config/server.env"
 set +a
 
 VERBOSE=""
+NO_LOG_BUFFER=""
 for arg in "$@"; do
   [[ "$arg" == "--verbose" ]] && VERBOSE=1
+  [[ "$arg" == "--no-log-buffer" ]] && NO_LOG_BUFFER=1
 done
 
 PORT="${NOTEBOOK_CHAT_PORT:-8001}"
@@ -71,6 +73,8 @@ argv=(
 )
 [[ -n "$VERBOSE" ]] && argv+=(--verbose)
 # When using tail wrapper we capture stdout/stderr only; do not add --log-file (would duplicate and grow unbounded)
+# --no-log-buffer bypasses tail wrapper and writes directly to one log file
+[[ -n "$NO_LOG_BUFFER" ]] && SERVER_LOG_TAIL_LINES=""
 if [[ -z "$SERVER_LOG_TAIL_LINES" || ! "$SERVER_LOG_TAIL_LINES" =~ ^[0-9]+$ ]]; then
   argv+=(--log-file "$SERVER_LOG")
 fi

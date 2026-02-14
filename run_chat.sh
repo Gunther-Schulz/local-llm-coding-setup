@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mode 1: Pure chat. One LLM; client talks to server (or proxy when PURE_CHAT_PROXY_PORT is set).
-# Usage: ./run_chat.sh [--verbose]
+# Usage: ./run_chat.sh [--verbose] [--no-log-buffer]
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
@@ -11,5 +11,6 @@ set +a
 EXTRA=()
 for arg in "$@"; do
   [[ "$arg" == "--verbose" ]] && EXTRA+=(--verbose)
+  [[ "$arg" == "--no-log-buffer" ]] && EXTRA+=(--no-log-buffer)
 done
 exec "$ROOT/run_server.sh" "${EXTRA[@]}" "$PURE_CHAT_MODEL" "$PURE_CHAT_PORT"

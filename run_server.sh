@@ -2,17 +2,20 @@
 # Core: start one llama-server. Used by run_chat.sh, run_coding.sh, run_notebook.sh.
 # No default model — pass MODEL_KEY (and optional PORT). Use launchers for a mode.
 # Config: config/server.env + config/models/<key>.yaml.
-# Usage: ./run_server.sh [--verbose] MODEL_KEY [PORT]
+# Usage: ./run_server.sh [--verbose] [--no-log-buffer] MODEL_KEY [PORT]
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 VERBOSE=""
+NO_LOG_BUFFER=""
 ACTIVE_MODEL=""
 PORT=""
 for arg in "$@"; do
   if [[ "$arg" == "--verbose" ]]; then
     VERBOSE=1
+  elif [[ "$arg" == "--no-log-buffer" ]]; then
+    NO_LOG_BUFFER=1
   elif [[ -z "$ACTIVE_MODEL" ]]; then
     ACTIVE_MODEL="$arg"
   elif [[ -z "$PORT" && "$arg" =~ ^[0-9]+$ ]]; then
@@ -23,7 +26,8 @@ PORT="${PORT:-8001}"
 
 if [[ -z "$ACTIVE_MODEL" ]]; then
   echo "Usage: ./run_server.sh [--verbose] MODEL_KEY [PORT]" >&2
-  echo "  --verbose = pass --verbose to llama-server (e.g. for tool/template messages)" >&2
+  echo "  --verbose      = pass --verbose to llama-server (e.g. for tool/template messages)" >&2
+  echo "  --no-log-buffer = write all output to one log file (no tail/buffer wrapper, even with SERVER_LOG_TAIL_LINES)" >&2
   echo "  MODEL_KEY = config/models/<key>.yaml (e.g. qwen3-coder-next-mxfp4)" >&2
   echo "  PORT      = optional, default 8001" >&2
   echo "Or run a mode: ./run_chat.sh  ./run_coding.sh  ./run_notebook.sh" >&2
@@ -52,7 +56,9 @@ mkdir -p "$ROOT/logs"
 SERVER_LOG="$ROOT/logs/server.log"
 rm -f "$SERVER_LOG"
 # Optional: keep only last N lines (e.g. 50000) so log doesn't grow unbounded with --verbose (set in config/server.env)
+# --no-log-buffer bypasses this and always writes directly to SERVER_LOG
 SERVER_LOG_TAIL_LINES="${SERVER_LOG_TAIL_LINES:-}"
+[[ -n "$NO_LOG_BUFFER" ]] && SERVER_LOG_TAIL_LINES=""
 
 # -------- vLLM backend --------
 if [[ "${BACKEND}" == "vllm" ]]; then

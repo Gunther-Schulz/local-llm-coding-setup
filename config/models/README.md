@@ -16,7 +16,6 @@ Config can use **nested YAML** (recommended) or **flat** keys. The loader suppor
 backend: llama   # or vllm
 temp: 0.7
 top_p: 1.0
-proxy_force_tool_choice_required: true
 
 llama:
   gguf: My-Model.gguf
@@ -36,7 +35,7 @@ vllm:
 **Flat (legacy):** All keys at top level: `backend`, `gguf`, `context_size`, … and when vLLM: `vllm_model`, `vllm_tool_call_parser`, etc. Still supported.
 
 **Used by `run_server.sh`** (via `scripts/load_model_config.sh`):  
-`backend` (optional), top-level shared: `temp`, `top_p`, `top_k`, `min_p`, `proxy_*`. Under `llama:` (or flat): `gguf`, `mmproj`, `context_size`, `n_gpu_layers`, `jinja`, `repeat_penalty`, `seed`, `batch_size`, `ubatch_size`, `chat_template_file`, `flash_attn`, `cache_type_k`, `cache_type_v`. Under `vllm:` (or flat `vllm_*`): `model`, `tool_call_parser`, `max_model_len`, `tensor_parallel`, `gpu_memory_utilization`, `serve_extra`, `tokenizer`.
+`backend` (optional), top-level shared: `temp`, `top_p`, `top_k`, `min_p`. Under `llama:` (or flat): `gguf`, `mmproj`, `context_size`, `n_gpu_layers`, `jinja`, `repeat_penalty`, `seed`, `batch_size`, `ubatch_size`, `chat_template_file`, `flash_attn`, `cache_type_k`, `cache_type_v`. Under `vllm:` (or flat `vllm_*`): `model`, `tool_call_parser`, `max_model_len`, `tensor_parallel`, `gpu_memory_utilization`, `serve_extra`, `tokenizer`.
 
 - **backend** – `llama` (default) | `vllm`. Chooses which server runs. When `vllm`, the model YAML must provide vLLM config (under `vllm:` or flat `vllm_model`, etc.).
 - **llama** (dict) – Llama-server–only options: `gguf`, `mmproj`, `context_size`, `n_gpu_layers`, `jinja`, `repeat_penalty`, `seed`, `batch_size`, `ubatch_size`, `chat_template_file`, `flash_attn`, `cache_type_k`, `cache_type_v`.
@@ -50,10 +49,6 @@ vllm:
 - **model** (under `vllm` or flat `vllm_model`) – Model to load: HuggingFace id, local GGUF path, or `repo_id:quant_type`. Passed to `vllm serve`.
 - **tool_call_parser** (under `vllm` or flat `vllm_tool_call_parser`) – e.g. `glm47` for GLM-4.7. Maps to `--tool-call-parser`.
 - **max_model_len**, **tensor_parallel**, **gpu_memory_utilization**, **serve_extra**, **tokenizer** – Under `vllm` (or flat `vllm_*`). Optional.
-
-**Used by the chat proxy** (when request `model` matches this file’s key; default: both off):
-- **proxy_force_tool_choice_required** – If `true`, set `tool_choice` to `"required"` when the request has tools (avoids grammar trigger bug with GLM).
-- **proxy_loop_limits** – If `true`, inject stop after N identical/similar tool calls (uses `PROXY_MAX_IDENTICAL_TOOL_CALLS`, `PROXY_MAX_SIMILAR_TOOL_CALLS` from env).
 
 Set per-mode model keys in `config/server.env` (PURE_CHAT_MODEL, CODING_MODEL, EMBEDDING_MODEL, NOTEBOOK_CHAT_MODEL, CODE_VISION_VISION_MODEL). Mode 4 coding uses CODING_MODEL. Run with `./run_chat.sh`, `./run_coding.sh`, `./run_notebook.sh`, or `./run_code_vision.sh`; or start one server with `./run_server.sh MODEL_KEY [PORT]`.
 

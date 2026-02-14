@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Mode 4: Code + Vision. Two models: vision (image → text) + coding (chat/tools). Like Mode 3 has embedding + chat.
 # Starts vision server on CODE_VISION_VISION_PORT (8002), coding server on CODE_VISION_CODING_PORT (8001).
-# Usage: ./run_code_vision.sh [--verbose]
+# Usage: ./run_code_vision.sh [--verbose] [--no-log-buffer]
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
@@ -12,6 +12,7 @@ set +a
 EXTRA=()
 for arg in "$@"; do
   [[ "$arg" == "--verbose" ]] && EXTRA+=(--verbose)
+  [[ "$arg" == "--no-log-buffer" ]] && EXTRA+=(--no-log-buffer)
 done
 VISION_PORT="${CODE_VISION_VISION_PORT:-8002}"
 CODING_PORT="${CODE_VISION_CODING_PORT:-8001}"

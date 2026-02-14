@@ -19,12 +19,3 @@ llama:
   seed: 3407
   batch_size: 4096
   ubatch_size: 4096
-
-# Proxy: only force tool_choice=required (avoid grammar trigger bug); loop limits off
-proxy_force_tool_choice_required: true
-proxy_loop_limits: false
-
-# Optional: uncomment to try reducing CPU load when model is partly offloaded (see KNOWN_ISSUES.md)
-# flash_attn: off
-# cache_type_k: bf16
-# cache_type_v: bf16
