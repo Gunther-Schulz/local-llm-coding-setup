@@ -1,0 +1,27 @@
+# ACTIVE_MODEL=qwen3-30b-ud-q5-xl. UD-Q5_K_XL (~21.7 GB) — imatrix-optimized, best Q5-tier. Qwen3-Coder-30B-A3B-Instruct (unsloth GGUF).
+# Model dir: models/qwen3-30b-ud-q5-xl/
+# Optimal: temp 0.7, top_p 0.8, top_k 20, min_p 0, repeat_penalty 1.1; context 65536. See KNOWN_ISSUES.md § Qwen3 Coder.
+backend: llama
+
+temp: 0.7
+top_p: 0.8
+top_k: 20
+min_p: 0.0
+
+llama:
+  download_url: "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF"
+  gguf: Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL.gguf
+  context_size: 131072
+  n_gpu_layers: -1
+  jinja: true
+  repeat_penalty: 1.1
+  seed: 3407
+  batch_size: 4096
+  ubatch_size: 4096
+  chat_template_file: config/templates/Qwen3-Coder-tool-fix.jinja
+  # Long context (65K–256K): KV cache quantization; see KNOWN_ISSUES.md § KV cache.
+  cache_type_k: q8_0
+  cache_type_v: q8_0   # If OOM or unsupported, remove or set in env; some builds need Flash Attention + GGML_CUDA_FA_ALL_QUANTS.
+  # Optional: flash_attn, presence_penalty; context_size 32768 if OOM
+
+vllm: {}

@@ -1,0 +1,22 @@
+# ACTIVE_MODEL=deepseek-r1-distill-qwen-32b-q6-k-l. DeepSeek R1 Distill Qwen 32B, Q6_K_L (~27.3 GB). Llama only.
+# Model dir: models/deepseek-r1-distill-qwen-32b-q6-k-l/
+# Settings from official/docs: temp 0.5–0.7 (0.6), top_p 0.95, context 131072; repeat_penalty to reduce repetition.
+backend: llama
+
+temp: 0.6
+top_p: 0.95
+top_k: 40
+min_p: 0.01
+
+llama:
+  download_url: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF"
+  gguf: DeepSeek-R1-Distill-Qwen-32B-Q6_K_L.gguf
+  context_size: 131072
+  n_gpu_layers: -1
+  jinja: true
+  repeat_penalty: 1.05
+  seed: 3407
+  batch_size: 4096
+  ubatch_size: 4096
+
+vllm: {}

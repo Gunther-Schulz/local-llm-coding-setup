@@ -1,0 +1,27 @@
+# Loaded when ACTIVE_MODEL=qwen3-coder-30b-a3b-instruct-awq4 (in config/server.env).
+# vLLM only: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit (~17 GB). Fits 32 GB GPU. Coding-focused.
+# llama.cpp equivalent: ACTIVE_MODEL=qwen3-coder-30b-a3b-instruct-gguf-q4-k-m (Q4_K_M GGUF, ~18.6 GB) or qwen3-coder-30b-a3b-instruct-gguf-q4-k-s (Q4_K_S).
+# Known issues: see KNOWN_ISSUES.md (vLLM + Qwen3 Coder tool parser). Use tool_call_parser: qwen3_coder (vLLM name).
+backend: vllm
+temp: 0
+top_p: 0.95
+top_k: 40
+min_p: 0.01
+
+llama: {}
+
+vllm:
+  # Default: vLLM downloads/caches from Hub on first run.
+  model: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
+  tokenizer: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
+  tool_call_parser: qwen3_coder
+  max_model_len: 65536
+  # If you see "Free memory ... less than desired GPU memory utilization": free GPU (stop other models) or lower this (e.g. 0.7).
+  gpu_memory_utilization: 0.90
+  # OOM during load? Use serve_extra with --enforce-eager (see KNOWN_ISSUES.md § vLLM Qwen3 MoE memory).
+  serve_extra: "--trust-remote-code"
+  # Pre-download (no HF at runtime): uncomment below, comment out model+tokenizer above, then run:
+  #   ./scripts/download-models.sh qwen3-coder-30b-a3b-instruct-awq4
+  # download_repo: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+  # model: models/qwen3-coder-30b-a3b-instruct-awq4/vllm
+  # (omit tokenizer when using local path; vLLM loads from model dir)

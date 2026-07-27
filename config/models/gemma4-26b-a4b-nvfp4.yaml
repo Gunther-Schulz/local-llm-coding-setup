@@ -1,0 +1,27 @@
+# Gemma 4 26B-A4B MoE with NVFP4 quantization (W4A4).
+# ~16.5 GB model weights, 3.8B active params per token.
+# Requires: patched gemma4.py (ships with weights), vLLM >= 0.19.
+# RTX 5090 (32GB): fits with room for KV cache at 128K context.
+#
+# Download: bg-digitalservices/Gemma-4-26B-A4B-it-NVFP4
+# Alt:      RedHatAI/gemma-4-26B-A4B-it-NVFP4
+#
+# Known issues (April 2026):
+#   - vLLM tool parser bugs: #39043 (tool calls leak to chat), #38946 (streaming JSON)
+#   - Patch: copy gemma4_patched.py over vllm/model_executor/models/gemma4.py
+#   - RTX 5090 (SM120): use VLLM_FLASH_ATTN_VERSION=2, need CUDA 12.8+
+
+backend: vllm
+
+temp: 0.7
+top_p: 0.9
+top_k: 40
+min_p: 0.01
+
+vllm:
+  download_repo: "bg-digitalservices/Gemma-4-26B-A4B-it-NVFP4"
+  model: models/gemma4-26b-a4b-nvfp4
+  tool_call_parser: gemma4
+  max_model_len: 131072
+  gpu_memory_utilization: 0.85
+  serve_extra: "--quantization modelopt --kv-cache-dtype fp8 --max-num-seqs 4 --moe-backend marlin --dtype auto --enable-auto-tool-choice"

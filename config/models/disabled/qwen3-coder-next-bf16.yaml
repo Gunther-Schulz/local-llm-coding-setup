@@ -1,26 +1,25 @@
-# Loaded when ACTIVE_MODEL=qwen3-coder-next-mxfp4 (in config/server.env). Same name as this file.
-# Llama: MXFP4_MOE ~43.7 GB (fits 32GB GPU). vLLM: full Qwen/Qwen3-Coder-Next ~150 GB — use backend: llama for small download/run.
-backend: llama
-temp: 1.0
+# Loaded when ACTIVE_MODEL=qwen3-coder-next-bf16 (in config/server.env). Same name as this file.
+# Llama: BF16 GGUF ~160 GB, 4 shards. vLLM: Qwen/Qwen3-Coder-Next safetensors.
+backend: vllm
+temp: 0
 top_p: 0.95
 top_k: 40
 min_p: 0.01
 
 llama:
   download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
-  gguf: Qwen3-Coder-Next-MXFP4_MOE.gguf
-  context_size: 180000
+  gguf: BF16/Qwen3-Coder-Next-BF16-00001-of-00004.gguf
+  context_size: 131072
   n_gpu_layers: -1
   jinja: true
-  repeat_penalty: 1.1
   seed: 3407
-  batch_size: 4096
-  ubatch_size: 4096
+  batch_size: 8192
+  ubatch_size: 8192
   chat_template_file: config/templates/Qwen3-Coder-tool-fix.jinja
 
 vllm:
   download_repo: "Qwen/Qwen3-Coder-Next"
-  model: models/qwen3-coder-next-mxfp4/vllm
+  model: models/qwen3-coder-next-bf16/vllm
   tool_call_parser: qwen3_coder
   max_model_len: 131072
   gpu_memory_utilization: 0.90

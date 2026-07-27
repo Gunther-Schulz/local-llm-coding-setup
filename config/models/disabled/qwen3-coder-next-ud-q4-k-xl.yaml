@@ -1,0 +1,30 @@
+# Loaded when ACTIVE_MODEL=qwen3-coder-next-ud-q4-k-xl (in config/server.env). Same name as this file.
+#
+# models/qwen3-coder-next-ud-q4-k-xl/  — llama (GGUF) only: UD-Q4_K_XL ~48.5 GB from download_url.
+# vLLM does NOT use this dir: it loads Qwen/Qwen3-Coder-Next from Hugging Face (download/cache as intended).
+backend: llama
+temp: 1.0
+top_p: 0.95
+top_k: 40
+min_p: 0.01
+
+llama:
+  download_url: "https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF"
+  gguf: Qwen3-Coder-Next-UD-Q4_K_XL.gguf
+  context_size: 131072
+  n_gpu_layers: -1
+  jinja: true
+  repeat_penalty: 1.1
+  seed: 3407
+  batch_size: 8192
+  ubatch_size: 8192
+  chat_template_file: config/templates/Qwen3-Coder-tool-fix.jinja
+
+vllm:
+  # HF id: vLLM downloads/caches from Hub (avoids local-path bug). Not models/qwen3-coder-next-ud-q4-k-xl/vllm.
+  model: Qwen/Qwen3-Coder-Next
+  tool_call_parser: qwen3_coder
+  max_model_len: 131072
+  gpu_memory_utilization: 0.90
+  tokenizer: Qwen/Qwen3-Coder-Next
+  serve_extra: "--trust-remote-code"

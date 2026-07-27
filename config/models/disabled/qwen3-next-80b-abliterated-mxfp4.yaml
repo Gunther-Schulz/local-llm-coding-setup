@@ -1,0 +1,26 @@
+# Loaded when ACTIVE_MODEL=qwen3-next-80b-abliterated-mxfp4 (in config/server.env). Same name as this file.
+# Llama: Huihui abliterated MXFP4_MOE ~43.7 GB, 3 shards. vLLM: Qwen/Qwen3-Next-80B-A3B-Instruct safetensors.
+backend: vllm
+temp: 1.0
+top_p: 0.95
+top_k: 40
+min_p: 0.01
+
+llama:
+  download_url: "https://huggingface.co/noctrex/Huihui-Qwen3-Next-80B-A3B-Instruct-abliterated-MXFP4_MOE-GGUF"
+  gguf: Huihui-Qwen3-Next-80B-A3B-Instruct-abliterated-MXFP4_MOE-00001-of-00003.gguf
+  context_size: 0
+  n_gpu_layers: -1
+  jinja: true
+  seed: 3407
+  batch_size: 8192
+  ubatch_size: 8192
+
+vllm:
+  download_repo: "Qwen/Qwen3-Next-80B-A3B-Instruct"
+  model: models/qwen3-next-80b-abliterated-mxfp4/vllm
+  tool_call_parser: qwen3_coder
+  max_model_len: 131072
+  gpu_memory_utilization: 0.90
+  tokenizer: Qwen/Qwen3-Next-80B-A3B-Instruct
+  serve_extra: "--trust-remote-code"

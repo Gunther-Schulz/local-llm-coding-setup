@@ -1,0 +1,26 @@
+# Loaded when ACTIVE_MODEL=qwen3-next-80b-abliterated-q5km (in config/server.env). Same name as this file.
+# Llama: Q5_K_M abliterated ~56.7 GB. vLLM: Qwen/Qwen3-Next-80B-A3B-Instruct safetensors.
+backend: vllm
+temp: 1.0
+top_p: 0.95
+top_k: 40
+min_p: 0.01
+
+llama:
+  download_url: "https://huggingface.co/mradermacher/Qwen3-Next-80B-A3B-Instruct-abliterated-GGUF/resolve/main/Qwen3-Next-80B-A3B-Instruct-abliterated.Q5_K_M.gguf"
+  gguf: Qwen3-Next-80B-A3B-Instruct-abliterated.Q5_K_M.gguf
+  context_size: 131072
+  n_gpu_layers: -1
+  jinja: true
+  seed: 3407
+  batch_size: 8192
+  ubatch_size: 8192
+
+vllm:
+  download_repo: "Qwen/Qwen3-Next-80B-A3B-Instruct"
+  model: models/qwen3-next-80b-abliterated-q5km/vllm
+  tool_call_parser: qwen3_coder
+  max_model_len: 131072
+  gpu_memory_utilization: 0.90
+  tokenizer: Qwen/Qwen3-Next-80B-A3B-Instruct
+  serve_extra: "--trust-remote-code"

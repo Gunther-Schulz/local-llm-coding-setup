@@ -1,0 +1,29 @@
+# ACTIVE_MODEL=glm-4.7-flash-mxfp4. Two variants: llama (GGUF) and vllm (safetensors).
+# Switch via backend: llama (default) or vllm. Download script fetches both when configured.
+# temp 0.3-0.7, top_p 0.9-0.95. VLLM_MXFP4_USE_MARLIN=1 set by run_vllm.sh when backend=vllm.
+backend: llama
+
+temp: 0.7
+top_p: 0.9
+top_k: 40
+min_p: 0.01
+
+llama:
+  download_url: "https://huggingface.co/noctrex/GLM-4.7-Flash-MXFP4_MOE-GGUF"
+  gguf: GLM-4.7-Flash-MXFP4_MOE.gguf
+  context_size: 0
+  n_gpu_layers: -1
+  jinja: true
+  seed: 3407
+  batch_size: 4096
+  ubatch_size: 4096
+  chat_template_file: config/templates/GLM-4-tool.jinja
+
+vllm:
+  download_repo: "GadflyII/GLM-4.7-Flash-MXFP4"
+  model: models/glm-4.7-flash-mxfp4/vllm
+  tool_call_parser: glm47
+  max_model_len: 65536
+  gpu_memory_utilization: 0.90
+  tokenizer: zai-org/GLM-4.7-Flash
+  serve_extra: "--trust-remote-code"
