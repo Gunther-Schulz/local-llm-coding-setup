@@ -61,6 +61,7 @@ SERVER_LOG_TAIL_LINES="${SERVER_LOG_TAIL_LINES:-}"
 [[ -n "$NO_LOG_BUFFER" ]] && SERVER_LOG_TAIL_LINES=""
 
 # -------- vLLM backend --------
+# Ctrl+C: handled in run_vllm.sh (trap kills only vLLM pipeline + workers, not session).
 if [[ "${BACKEND}" == "vllm" ]]; then
   echo "Loading model: $ACTIVE_MODEL (stop any server on port ${PORT} first)"
   echo "Use this name in Cursor: ${CURSOR_MODEL_ALIAS:-$ACTIVE_MODEL}"
